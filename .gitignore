@@ -1,6 +1,9 @@
-# 4. Create perfect .gitignore NOW before first add
+
+cd C:\Users\user\toxicology
+
+# Overwrite with clean version
 @"
-# === MODELS - NEVER PUSH ===
+# === MODELS - NEVER PUSH TO GITHUB ===
 *.cbm
 *.ckpt
 *.pt
@@ -11,22 +14,25 @@
 *.onnx
 *.h5
 
-# Folders with huge files
+# Folders with huge checkpoints
 modules/*_dmpnn_ensemble/
 modules/increments/
 modules/lineage/
 modules/locks/
+DIT_model/
+catboost_info/
+feature_cache/
 data/
 logs/
+checkpoints/
+
+# Python cache
 __pycache__/
 .mypy_cache/
 .venv/
-checkpoints/
 
-# Keep small json only
+# Keep small tracking files - force add with -f
 !*.json
 !*.jsonl
 !benchmark*.txt
-"@ | Out-File -Encoding utf8 .gitignorecatboost_info/
-DIT_model/
-feature_cache/
+"@ | Set-Content -Path .gitignore -Encoding utf8 -Force
