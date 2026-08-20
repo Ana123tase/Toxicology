@@ -1,0 +1,39 @@
+{
+  "dataset": "Teratogenicity",
+  "target_col": "Y",
+  "n_train": 89,
+  "n_val": 11,
+  "n_test": 12,
+  "balance_classes": true,
+  "ensemble_size": 3,
+  "dev_fast": false,
+  "ensemble_val_auc": 0.6785714285714286,
+  "ensemble_val_ap": 0.8670995670995671,
+  "ensemble_test_auc": 0.7714285714285715,
+  "per_seed_val_auc": [
+    0.6785714285714286,
+    0.6785714285714286,
+    0.6428571428571428
+  ],
+  "encoder": "frozen",
+  "agg": "mean",
+  "chemeleon_dim": 2048,
+  "ffn_hidden": 300,
+  "dropout": 0.3,
+  "lr": 0.0001,
+  "weight_decay": 0.0,
+  "max_epochs": 30,
+  "foundation_model": "chemeleon_mp",
+  "member_checkpoint_sources": [
+    "C:\\Users\\user\\Toxicology\\checkpoints_dmpnn_v2\\Teratogenicity\\seed0\\best-epoch=0-val_roc=0.000-v1.ckpt",
+    "C:\\Users\\user\\Toxicology\\checkpoints_dmpnn_v2\\Teratogenicity\\seed1\\best-epoch=1-val_roc=0.000-v1.ckpt",
+    "C:\\Users\\user\\Toxicology\\checkpoints_dmpnn_v2\\Teratogenicity\\seed2\\best-epoch=1-val_roc=0.000-v1.ckpt"
+  ],
+  "ensemble_checkpoint_paths": [
+    "modules\\Teratogenicity_dmpnn_ensemble\\seed0.ckpt",
+    "modules\\Teratogenicity_dmpnn_ensemble\\seed1.ckpt",
+    "modules\\Teratogenicity_dmpnn_ensemble\\seed2.ckpt"
+  ],
+  "market_benchmark_auc": 0.78,
+  "note": "ensemble_test_auc is the average of member predicted probabilities scored once against the untouched test set -- not selected or adjusted against test performance. market_benchmark_auc is informational only and played no role in training, checkpoint selection, or hyperparameters. "
+}

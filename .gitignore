@@ -1,0 +1,30 @@
+# 4. Create perfect .gitignore NOW before first add
+@"
+# === MODELS - NEVER PUSH ===
+*.cbm
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.db
+*.sqlite
+*.onnx
+*.h5
+
+# Folders with huge files
+modules/*_dmpnn_ensemble/
+modules/increments/
+modules/lineage/
+modules/locks/
+data/
+logs/
+__pycache__/
+.mypy_cache/
+.venv/
+checkpoints/
+
+# Keep small json only
+!*.json
+!*.jsonl
+!benchmark*.txt
+"@ | Out-File -Encoding utf8 .gitignore

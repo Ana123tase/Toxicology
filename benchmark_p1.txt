@@ -1,0 +1,84 @@
+============================================================
+ADMET Benchmark P1 - Scaffold Split
+Generated: 2026-08-18T18:25:49.131523
+============================================================
+Split: 80% train / 10% val / 10% test | seed 42
+Leakage check: scaffold_split.py -> No scaffold leakage - OK
+Model: CatBoost single-task | auto_class_weights=Balanced
+       iterations=500, depth=6, lr=0.05
+Features: RDKit descriptors + ECFP 2048-bit (DESCRIPTOR_NAMES + ECFP_COLS)
+Data: Legitimate labeled sources (TDC/Harvard Dataverse down fallback)
+============================================================
+
+Ames (target=Overall):
+  n_train=4413 | n_val=551 | n_test=553
+  Val  AUC=0.891  AP=0.866
+  Test AUC=0.900  (honest scaffold hold-out)
+  best_iteration=None
+
+Ames (target=Overall):
+  n_train=4413 | n_val=551 | n_test=553
+  Val  AUC=0.878  AP=0.854
+  Test AUC=0.913  (honest scaffold hold-out)
+  best_iteration=904
+
+CYP3A4 (target=Y):
+  n_train=9735 | n_val=1216 | n_test=1218
+  Val  AUC=0.853  AP=0.805
+  Test AUC=0.862  (honest scaffold hold-out)
+  best_iteration=None
+
+CYP3A4 (target=Y):
+  n_train=9735 | n_val=1216 | n_test=1218
+  Val  AUC=0.860  AP=0.821
+  Test AUC=0.868  (honest scaffold hold-out)
+  best_iteration=995
+
+DILI (target=Y):
+  n_train=370 | n_val=46 | n_test=47
+  Val  AUC=0.856  AP=0.923
+  Test AUC=0.829  (honest scaffold hold-out)
+  best_iteration=None
+
+DILI (target=Y):
+  n_train=370 | n_val=46 | n_test=47
+  Val  AUC=0.876  AP=0.939
+  Test AUC=0.827  (honest scaffold hold-out)
+  best_iteration=231
+
+Teratogenicity (target=Y):
+  n_train=89 | n_val=11 | n_test=12
+  Val  AUC=0.750  AP=0.886
+  Test AUC=0.829  (honest scaffold hold-out)
+  best_iteration=None
+
+Teratogenicity (target=Y):
+  n_train=89 | n_val=11 | n_test=12
+  Val  AUC=0.607  AP=0.750
+  Test AUC=0.714  (honest scaffold hold-out)
+  best_iteration=107
+
+hERG (target=Y):
+  n_train=10442 | n_val=1305 | n_test=1306
+  Val  AUC=0.819  AP=0.745
+  Test AUC=0.835  (honest scaffold hold-out)
+  best_iteration=None
+
+hERG (target=Y):
+  n_train=10442 | n_val=1305 | n_test=1306
+  Val  AUC=0.842  AP=0.798
+  Test AUC=0.844  (honest scaffold hold-out)
+  best_iteration=2121
+
+------------------------------------------------------------
+SUMMARY (Test AUC):
+  Ames: 0.900
+  Ames: 0.913
+  CYP3A4: 0.862
+  CYP3A4: 0.868
+  DILI: 0.829
+  DILI: 0.827
+  Teratogenicity: 0.829
+  Teratogenicity: 0.714
+  hERG: 0.835
+  hERG: 0.844

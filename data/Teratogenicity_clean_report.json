@@ -1,0 +1,40 @@
+{
+  "generated_at_utc": "2026-08-15T08:32:55.129131+00:00",
+  "rdkit_version": "2026.03.5",
+  "script_git_commit": "e9b3a2f35e52f5432d354fb15f5557b49ff8b16e",
+  "input_file": "data\\Teratogenicity_raw.csv",
+  "input_file_sha256": "d412307a210dff45c28020ede43680557d22121e0d9410f2a0cd050e33636b0a",
+  "clean_output_file": "data\\Teratogenicity_clean.csv",
+  "review_output_file": "data\\Teratogenicity_review.csv",
+  "smiles_column": "SMILES",
+  "target_column": "Y",
+  "total_records": 112,
+  "valid_smiles": 112,
+  "invalid_smiles": 0,
+  "clean_structures": 112,
+  "salts_removed": 0,
+  "mixtures": 0,
+  "metal_complexes": 0,
+  "ambiguous_structures": 0,
+  "no_parent_structures": 0,
+  "duplicate_groups": 0,
+  "duplicates_flagged": 0,
+  "conflicting_duplicate_groups": 0,
+  "conflicting_duplicate_rows": 0,
+  "rows_with_unassigned_stereocenters": 27,
+  "records_retained": 112,
+  "records_excluded": 0,
+  "pre_duplicate_status_counts": {
+    "clean": 112
+  },
+  "final_status_counts": {
+    "clean": 112,
+    "salt_removed": 0,
+    "mixture": 0,
+    "metal_complex": 0,
+    "ambiguous_fragment": 0,
+    "no_parent": 0,
+    "invalid_smiles": 0,
+    "duplicate": 0
+  }
+}

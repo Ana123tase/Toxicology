@@ -1,0 +1,4 @@
+D-MPNN single-task results (ensemble_size=1, CheMeleon foundation model)
+SKELETON RUN -- see train_dmpnn.py for production metrics.json output
+======================================================================
+Teratogenicity   encoder=frozen      n_train=    89  test_auc=0.7714

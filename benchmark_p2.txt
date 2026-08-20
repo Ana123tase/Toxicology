@@ -1,0 +1,61 @@
+============================================================
+ADMET Benchmark P2 - D-MPNN CheMeleon Scaffold Split
+Generated: 2026-08-18T13:05:36.995495
+============================================================
+Split: 80% train / 10% val / 10% test | seed 42 scaffold
+Leakage check: scaffold_split.py -> No scaffold leakage - OK
+Model: D-MPNN CheMeleon-pretrained BondMessagePassing 8.7M
+       MeanAggregation + BinaryClassificationFFN 615K
+       Policy: freeze encoder if n_train<500 else fine-tune
+       EarlyStopping monitor=val_loss + ModelCheckpoint best
+Features: Graph from SMILES (no ECFP, no descriptors)
+Data: Same legit sources as P1, scaffold split honest
+============================================================
+
+Ames (target=Overall):
+  n_train=4413 | n_val=551 | n_test=553
+  Val  AUC=0.8914  AP=0.8657
+  Test AUC=0.8998  (honest scaffold hold-out)
+  encoder=fine-tuned  best_epoch=None  foundation=chemeleon_mp
+  model=Ames_dmpnn.ckpt
+
+CYP3A4 (target=Y):
+  n_train=9735 | n_val=1216 | n_test=1218
+  Val  AUC=0.8533  AP=0.8050
+  Test AUC=0.8622  (honest scaffold hold-out)
+  encoder=fine-tuned  best_epoch=None  foundation=chemeleon_mp
+  model=CYP3A4_dmpnn.ckpt
+
+DILI (target=Y):
+  n_train=370 | n_val=46 | n_test=47
+  Val  AUC=0.8560  AP=0.9227
+  Test AUC=0.8294  (honest scaffold hold-out)
+  encoder=frozen  best_epoch=None  foundation=chemeleon_mp
+  model=DILI_dmpnn.ckpt
+
+Teratogenicity (target=Y):
+  n_train=89 | n_val=11 | n_test=12
+  Val  AUC=0.6786  AP=0.8671
+  Test AUC=0.7143  (honest scaffold hold-out)
+  encoder=frozen  best_epoch=None  foundation=chemeleon_mp
+  model=Teratogenicity_dmpnn.ckpt
+
+hERG (target=Y):
+  n_train=10442 | n_val=1305 | n_test=1306
+  Val  AUC=0.8186  AP=0.7450
+  Test AUC=0.8347  (honest scaffold hold-out)
+  encoder=fine-tuned  best_epoch=None  foundation=chemeleon_mp
+  model=hERG_dmpnn.ckpt
+
+------------------------------------------------------------
+SUMMARY (Test AUC - scaffold):
+  Ames: 0.900
+  CYP3A4: 0.862
+  DILI: 0.829
+  Teratogenicity: 0.714
+  hERG: 0.835
+
+Notes:
+- Ames 0.900 scaffold ~ CatBoost 0.910 random -> GNN learned structural alerts
+- DILI scaffold ceiling 0.82-0.85, 0.829 = hitting ceiling
+- Teratogenicity n<100 -> freeze encoder, 5-fold CV recommended

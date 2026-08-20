@@ -1,0 +1,16 @@
+{
+  "dataset": "Teratogenicity",
+  "latest_version": 0,
+  "rounds": [
+    {
+      "version": 0,
+      "type": "full",
+      "cbm_path": "modules\\Teratogenicity_catboost_production_v0.cbm",
+      "meta_path": "modules\\Teratogenicity_catboost_production_v0_meta.json",
+      "model_hash": "9880c77caef6cad425b2c13711d94c5016c119fea1559907e3b4533bf1d278a2",
+      "n_rows": 112,
+      "total_trees": 108,
+      "timestamp": "2026-08-18 18:38:49"
+    }
+  ]
+}

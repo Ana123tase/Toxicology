@@ -1,0 +1,21 @@
+{
+  "dataset": "Teratogenicity",
+  "target_col": "Y",
+  "version": 0,
+  "n_rows_trained_on": 112,
+  "epochs_trained": 7,
+  "encoder": "frozen",
+  "agg": "mean",
+  "ffn_hidden": 300,
+  "dropout": 0.3,
+  "lr": 0.0001,
+  "weight_decay": null,
+  "chemeleon_dim": 2048,
+  "foundation_model": "chemeleon_mp",
+  "seed": 42,
+  "model_path": "modules\\Teratogenicity_dmpnn_production.ckpt",
+  "parent_checkpoint": null,
+  "checkpoint_hash": "3ac07364729c6cbf",
+  "checkpoint_hash_full": "3ac07364729c6cbf874d0880d32f20a7fbb5002c021f60298d4676cc308a503d",
+  "trained_at": "2026-08-18T19:49:41.317192+00:00"
+}
