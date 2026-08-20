@@ -1,7 +1,5 @@
 
-cd C:\Users\user\toxicology
-
-# Overwrite with clean version
+# Remove-Item -Recurse -Force .git : Removing whole git
 @"
 # === MODELS - NEVER PUSH TO GITHUB ===
 *.cbm
