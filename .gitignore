@@ -27,4 +27,6 @@ checkpoints/
 !*.json
 !*.jsonl
 !benchmark*.txt
-"@ | Out-File -Encoding utf8 .gitignore
+"@ | Out-File -Encoding utf8 .gitignorecatboost_info/
+DIT_model/
+feature_cache/
