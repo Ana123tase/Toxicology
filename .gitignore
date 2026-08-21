@@ -11,6 +11,7 @@
 *.sqlite
 *.onnx
 *.h5
+*.pkl
 
 # Folders with huge checkpoints
 modules/*_dmpnn_ensemble/

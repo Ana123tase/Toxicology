@@ -66,9 +66,33 @@ The important part is that no train/validation/test split was used for this fina
 1.  500 unique check on CatBoost: done
 2. D-MPNN development with chemprop: now we are doing training but it is taking very long so I am going to continue development of MolFormer
 
+
+Phase 3 — MoLFormer Integration: Plan Summary
+
+Approach: Use MoLFormer as a frozen embedding extractor (no fine-tuning), concatenate its embeddings with existing ECFP features, and feed both into CatBoost — testing empirically per endpoint whether MoLFormer features help.
+
+Steps:
+
+Environment setup — Install CPU-only PyTorch + Transformers into the same conda env as Phase 1, verify install, download pretrained ibm/MoLFormer-XL-both-10pct weights (one-time, ~190MB, cached locally).
+        conda create -n toxpredict python=3.12 -y
+        conda activate toxpredict
+        pip install rdkit catboost numpy pandas
+        pip install torch --index-url https://download.pytorch.org/whl/cpu
+        pip install "transformers==4.44.2"
+        python -c "import rdkit, catboost, torch, transformers; print(rdkit.__version__, catboost.__version__, torch.__version__, transformers.__version__)"
+
+
+Embedding extraction — Write a script that runs every canonicalized SMILES (across all 5 endpoints) through frozen MoLFormer, mean-pools token outputs into one 768-number vector per molecule, and caches results in molformer.db (SQLite, keyed by SMILES) — so extraction only ever runs once per molecule.
+Feature concatenation — Build a combined feature matrix per molecule: existing 2048-bit ECFP vector + 768-number MoLFormer embedding = 2816 features per row.
+Benchmark comparison (per endpoint) — Re-train CatBoost on the concatenated features using your existing scaffold splits, and compare AUC/F1 against your Phase 1 ECFP-only baseline (benchmark_p1.txt).
+Per-endpoint decision — Keep MoLFormer features only for endpoints where they measurably improve the score; stay ECFP-only where they don't. Document the outcome per endpoint — no forced uniformity.
+Output — benchmark_p3.txt (updated metrics) + molformer.db (embedding cache) + a documented decision on which feature set won per endpoint.
+
+In future, I will train Logistic Regression and MLP as benchmarks, but I would expect CatBoost to provide the best balance between accuracy, robustness, training speed, and ease of deployment for your specific datasets.
+
 ensembling and stacking will be done later after development and training of all models
 
-You have:
+We have:
 
 DILI: 463/463 molecules
 hERG: 13,053/13,053
