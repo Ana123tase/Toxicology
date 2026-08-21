@@ -1,0 +1,34 @@
+============================================================
+ADMET Benchmark P3 - Logistic Regression on MoLFormer embeddings
+Generated: 2026-08-21T08:53:52.740484+00:00
+============================================================
+Features: MoLFormer 768-dim embeddings ONLY, StandardScaler-normalized
+Model: LogisticRegression, class_weight=balanced, max_iter=2000
+============================================================
+DILI (target=Y):
+  n_train=370 | n_val=46 | n_test=47
+  Val  AUC=0.702  AP=0.782
+  Test AUC=0.800  (honest scaffold hold-out)
+hERG (target=Y):
+  n_train=10442 | n_val=1305 | n_test=1306
+  Val  AUC=0.787  AP=0.692
+  Test AUC=0.766  (honest scaffold hold-out)
+CYP3A4 (target=Y):
+  n_train=9735 | n_val=1216 | n_test=1218
+  Val  AUC=0.779  AP=0.726
+  Test AUC=0.814  (honest scaffold hold-out)
+Ames (target=Overall):
+  n_train=4413 | n_val=551 | n_test=553
+  Val  AUC=0.840  AP=0.776
+  Test AUC=0.849  (honest scaffold hold-out)
+Teratogenicity (target=Y):
+  n_train=89 | n_val=11 | n_test=12
+  Val  AUC=0.643  AP=0.714
+  Test AUC=0.514  (honest scaffold hold-out)
+------------------------------------------------------------
+SUMMARY (Test AUC):
+  DILI: 0.800
+  hERG: 0.766
+  CYP3A4: 0.814
+  Ames: 0.849
+  Teratogenicity: 0.514

@@ -1,0 +1,40 @@
+============================================================
+ADMET Benchmark P3 - MoLFormer embeddings ONLY (isolation test)
+Generated: 2026-08-21T08:33:27.702826+00:00
+============================================================
+Model: CatBoost single-task | auto_class_weights=Balanced
+       iterations=2500 (early stop 150) | depth=6, lr=0.05
+Features: MoLFormer 768-dim embeddings ONLY (no ECFP, no RDKit descriptors)
+============================================================
+DILI (target=Y):
+  n_train=370 | n_val=46 | n_test=47 | n_features=768
+  Val  AUC=0.773  AP=0.863
+  Test AUC=0.827  (honest scaffold hold-out)
+  best_iteration=366
+hERG (target=Y):
+  n_train=10442 | n_val=1305 | n_test=1306 | n_features=768
+  Val  AUC=0.843  AP=0.779
+  Test AUC=0.826  (honest scaffold hold-out)
+  best_iteration=2136
+CYP3A4 (target=Y):
+  n_train=9735 | n_val=1216 | n_test=1218 | n_features=768
+  Val  AUC=0.823  AP=0.769
+  Test AUC=0.824  (honest scaffold hold-out)
+  best_iteration=1461
+Ames (target=Overall):
+  n_train=4413 | n_val=551 | n_test=553 | n_features=768
+  Val  AUC=0.883  AP=0.853
+  Test AUC=0.893  (honest scaffold hold-out)
+  best_iteration=974
+Teratogenicity (target=Y):
+  n_train=89 | n_val=11 | n_test=12 | n_features=768
+  Val  AUC=0.929  AP=0.968
+  Test AUC=0.686  (honest scaffold hold-out)
+  best_iteration=6
+------------------------------------------------------------
+SUMMARY (Test AUC):
+  DILI: 0.827
+  hERG: 0.826
+  CYP3A4: 0.824
+  Ames: 0.893
+  Teratogenicity: 0.686

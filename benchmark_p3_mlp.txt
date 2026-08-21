@@ -1,0 +1,39 @@
+============================================================
+ADMET Benchmark P3 - MLP on MoLFormer embeddings
+Generated: 2026-08-21T08:57:17.906325+00:00
+============================================================
+Features: MoLFormer 768-dim embeddings ONLY, StandardScaler-normalized
+Model: MLPClassifier hidden=(128,64), alpha=1e-3, early_stopping=True
+============================================================
+DILI (target=Y):
+  n_train=370 | n_val=46 | n_test=47
+  Val  AUC=0.779  AP=0.873
+  Test AUC=0.814  (honest scaffold hold-out)
+  n_iter=31
+hERG (target=Y):
+  n_train=10442 | n_val=1305 | n_test=1306
+  Val  AUC=0.829  AP=0.754
+  Test AUC=0.821  (honest scaffold hold-out)
+  n_iter=86
+CYP3A4 (target=Y):
+  n_train=9735 | n_val=1216 | n_test=1218
+  Val  AUC=0.819  AP=0.763
+  Test AUC=0.824  (honest scaffold hold-out)
+  n_iter=28
+Ames (target=Overall):
+  n_train=4413 | n_val=551 | n_test=553
+  Val  AUC=0.878  AP=0.829
+  Test AUC=0.882  (honest scaffold hold-out)
+  n_iter=43
+Teratogenicity (target=Y):
+  n_train=89 | n_val=11 | n_test=12
+  Val  AUC=0.643  AP=0.797
+  Test AUC=0.543  (honest scaffold hold-out)
+  n_iter=22
+------------------------------------------------------------
+SUMMARY (Test AUC):
+  DILI: 0.814
+  hERG: 0.821
+  CYP3A4: 0.824
+  Ames: 0.882
+  Teratogenicity: 0.543

@@ -1,0 +1,12 @@
+{
+  "dataset": "Teratogenicity",
+  "target_col": "Y",
+  "n_train": 89,
+  "n_val": 11,
+  "n_test": 12,
+  "val_auc": 0.6428571428571428,
+  "val_ap": 0.7972789115646257,
+  "test_auc": 0.5428571428571428,
+  "n_iter": 22,
+  "trained_at_utc": "2026-08-21T08:57:17.894509+00:00"
+}

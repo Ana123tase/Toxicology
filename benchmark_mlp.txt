@@ -1,0 +1,46 @@
+============================================================
+ADMET Benchmark - MLP on RDKit descriptors + ECFP 2048-bit
+Generated: 2026-08-21T10:10:04.543031+00:00
+============================================================
+Model: MLPClassifier, architecture+alpha chosen per dataset via
+       small validation-AUC search over 5 candidates (see CANDIDATES)
+Features: RDKit descriptors + ECFP 2048-bit (same as benchmark_p1.txt), StandardScaler-normalized
+Data: same scaffold splits as benchmark_p1.txt
+============================================================
+DILI (target=Y):
+  n_train=370 | n_val=46 | n_test=47 | n_features=2058
+  Best architecture: hidden=[256, 128, 64] alpha=1e-03
+  Val  AUC=0.738  AP=0.828
+  Test AUC=0.647  (honest scaffold hold-out)
+  n_iter=25
+hERG (target=Y):
+  n_train=10442 | n_val=1305 | n_test=1306 | n_features=2058
+  Best architecture: hidden=[256, 128, 64] alpha=1e-03
+  Val  AUC=0.798  AP=0.746
+  Test AUC=0.786  (honest scaffold hold-out)
+  n_iter=25
+CYP3A4 (target=Y):
+  n_train=9735 | n_val=1216 | n_test=1218 | n_features=2058
+  Best architecture: hidden=[128, 64] alpha=3e-03
+  Val  AUC=0.812  AP=0.779
+  Test AUC=0.808  (honest scaffold hold-out)
+  n_iter=26
+Ames (target=Overall):
+  n_train=4413 | n_val=551 | n_test=553 | n_features=2058
+  Best architecture: hidden=[256, 128] alpha=1e-03
+  Val  AUC=0.837  AP=0.806
+  Test AUC=0.849  (honest scaffold hold-out)
+  n_iter=23
+Teratogenicity (target=Y):
+  n_train=89 | n_val=11 | n_test=12 | n_features=2058
+  Best architecture: hidden=[128, 64] alpha=3e-03
+  Val  AUC=0.857  AP=0.924
+  Test AUC=0.686  (honest scaffold hold-out)
+  n_iter=24
+------------------------------------------------------------
+SUMMARY (Test AUC):
+  DILI: 0.647
+  hERG: 0.786
+  CYP3A4: 0.808
+  Ames: 0.849
+  Teratogenicity: 0.686

@@ -1,0 +1,13 @@
+{
+  "dataset": "DILI",
+  "target_col": "Y",
+  "n_train": 370,
+  "n_val": 46,
+  "n_test": 47,
+  "n_features": 768,
+  "val_auc": 0.7728194726166329,
+  "val_ap": 0.863044414506315,
+  "test_auc": 0.8274509803921569,
+  "best_iteration": 366,
+  "trained_at_utc": "2026-08-21T08:12:09.565358+00:00"
+}

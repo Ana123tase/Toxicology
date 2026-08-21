@@ -1,0 +1,18 @@
+{
+  "dataset": "CYP3A4",
+  "target_col": "Y",
+  "n_train": 9735,
+  "n_val": 1216,
+  "n_test": 1218,
+  "n_features": 2058,
+  "best_hidden_layer_sizes": [
+    128,
+    64
+  ],
+  "best_alpha": 0.003,
+  "val_auc": 0.8124665135859166,
+  "val_ap": 0.7790112931371945,
+  "test_auc": 0.8080312336358877,
+  "n_iter": 26,
+  "trained_at_utc": "2026-08-21T10:08:31.810627+00:00"
+}

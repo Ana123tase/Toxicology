@@ -1,0 +1,19 @@
+{
+  "dataset": "DILI",
+  "target_col": "Y",
+  "n_train": 370,
+  "n_val": 46,
+  "n_test": 47,
+  "n_features": 2058,
+  "best_hidden_layer_sizes": [
+    256,
+    128,
+    64
+  ],
+  "best_alpha": 0.001,
+  "val_auc": 0.7383367139959433,
+  "val_ap": 0.8282972556611493,
+  "test_auc": 0.6470588235294117,
+  "n_iter": 25,
+  "trained_at_utc": "2026-08-21T10:04:41.276685+00:00"
+}

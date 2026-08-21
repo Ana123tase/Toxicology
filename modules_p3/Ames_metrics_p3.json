@@ -1,0 +1,13 @@
+{
+  "dataset": "Ames",
+  "target_col": "Overall",
+  "n_train": 4413,
+  "n_val": 551,
+  "n_test": 553,
+  "n_features": 2826,
+  "val_auc": 0.8901741293532338,
+  "val_ap": 0.8634392020170649,
+  "test_auc": 0.8981631320444027,
+  "best_iteration": 721,
+  "trained_at_utc": "2026-08-21T07:42:39.676354+00:00"
+}

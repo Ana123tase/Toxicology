@@ -19,8 +19,8 @@ Teratogenicity — teratogenicity
 ## Roadmap (6 phases)
 1. Dataset → RDKit/ECFP → CatBoost → benchmark (`benchmark_p1.txt` + frozen feature store): This is already done, now moving to phase 2
 2. Add D-MPNN and ensemble it with CatBoost→ benchmark → CatBoost+D-MPNN ensemble (`benchmark_p2.txt`): start
-3. Add MoLFormer and make a cascade → hybrid fusion (`molformer.db` + `benchmark_p3.txt`)
-NB: Here all algorithms (CatBoost, D-MPNN AND MolFormer) must participate in all mechanisms (Ensemble, cascade and hybrid)
+3. Add a Uni-Mol and make a cascade → hybrid fusion (`Uni-Mol.db` + `benchmark_p3.txt`)
+NB: Here all algorithms (CatBoost, D-MPNN AND Uni-Mol) must participate in all mechanisms (Ensemble, cascade and hybrid)
 N.B: At each level it checks if confidence is enough
 4. Confidence + applicability domain + explainability (API: prob, confidence, domain, neighbors, atom_map)
 5. Fast production API (<300ms) + load testing + PDF report + pricing page
@@ -31,7 +31,7 @@ N.B: At each level it checks if confidence is enough
 - **Model architecture:** Shared multi-task CatBoost (validated against single-task baselines in the benchmark, to confirm the multi-task bet actually helps)
 - **Retraining strategy,** Warm-start incremental retraining (not live/online learning) — future learning: this is a must have for all of my algorithms used to build models of my project
 - **Features:** RDKit + ECFP, radius 2, 2048 bits
-- **Model library:** CatBoost, D-MPNN and MolFormer
+- **Model library:** CatBoost, D-MPNN and Uni-Mol
 - **Data source:** TDC (Therapeutics Data Commons), pulling from Harvard Dataverse but it is down now, we will do development without it
 
 ## What's actually been done
@@ -64,33 +64,9 @@ The important part is that no train/validation/test split was used for this fina
 ## Where we are right now (Updated 2026-08-19)
 
 1.  500 unique check on CatBoost: done
-2. D-MPNN development with chemprop: now we are doing training but it is taking very long so I am going to continue development of MolFormer
+2. D-MPNN development with chemprop: now we are doing training but it is taking very long so I am going to continue development of Uni-Mol
 
 
-Phase 3 — MoLFormer Integration: Plan Summary
-
-Approach: Use MoLFormer as a frozen embedding extractor (no fine-tuning), concatenate its embeddings with existing ECFP features, and feed both into CatBoost — testing empirically per endpoint whether MoLFormer features help.
-
-Steps:
-
-Environment setup — Install CPU-only PyTorch + Transformers into the same conda env as Phase 1, verify install, download pretrained ibm/MoLFormer-XL-both-10pct weights (one-time, ~190MB, cached locally).
-        conda create -n toxpredict python=3.12 -y
-        conda activate toxpredict
-        pip install rdkit catboost numpy pandas
-        pip install torch --index-url https://download.pytorch.org/whl/cpu
-        pip install "transformers==4.44.2"
-        python -c "import rdkit, catboost, torch, transformers; print(rdkit.__version__, catboost.__version__, torch.__version__, transformers.__version__)"
-
-
-Embedding extraction — Write a script that runs every canonicalized SMILES (across all 5 endpoints) through frozen MoLFormer, mean-pools token outputs into one 768-number vector per molecule, and caches results in molformer.db (SQLite, keyed by SMILES) — so extraction only ever runs once per molecule.
-Feature concatenation — Build a combined feature matrix per molecule: existing 2048-bit ECFP vector + 768-number MoLFormer embedding = 2816 features per row.
-Benchmark comparison (per endpoint) — Re-train CatBoost on the concatenated features using your existing scaffold splits, and compare AUC/F1 against your Phase 1 ECFP-only baseline (benchmark_p1.txt).
-Per-endpoint decision — Keep MoLFormer features only for endpoints where they measurably improve the score; stay ECFP-only where they don't. Document the outcome per endpoint — no forced uniformity.
-Output — benchmark_p3.txt (updated metrics) + molformer.db (embedding cache) + a documented decision on which feature set won per endpoint.
-
-In future, I will train Logistic Regression and MLP as benchmarks, but I would expect CatBoost to provide the best balance between accuracy, robustness, training speed, and ease of deployment for your specific datasets.
-
-ensembling and stacking will be done later after development and training of all models
 
 We have:
 
@@ -121,10 +97,10 @@ Don't build this yet — only if TDC stays broken:
 - Or find direct CSV downloads from the original papers behind DILI/hERG/Ames/CYP3A4/Teratogens
 
 ## Near-term step sequence (after DILI pull succeeds)
-Now I am heading straight to MolFormer development
+Now I am heading straight to Uni-Mol development
 
 ## What matters most for "best in market" (keep priorities straight)
 1. Benchmark credibility — honest, reproducible numbers, ideally matching/beating published literature
 2. Correct evaluation methodology — **scaffold splits** done
 3. Explainability + confidence (Phase 4) — matters more to buyers than raw accuracy
-4. Architecture sophistication (D-MPNN, MoLFormer) only pays off once 1–3 are solid — a fancy model with sloppy evaluation loses to a simple model with rigorous evaluation: all algorithms (CatBoost, D-MPNN AND MolFormer) must participate in all mechanisms (Ensemble, cascade and hybrid)
+4. Architecture sophistication (D-MPNN, Uni-Mol) only pays off once 1–3 are solid — a fancy model with sloppy evaluation loses to a simple model with rigorous evaluation: all algorithms (CatBoost, D-MPNN AND Uni-Mol) must participate in all mechanisms (Ensemble, cascade and hybrid)

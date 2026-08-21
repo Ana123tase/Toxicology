@@ -1,0 +1,13 @@
+{
+  "dataset": "hERG",
+  "target_col": "Y",
+  "n_train": 10442,
+  "n_val": 1305,
+  "n_test": 1306,
+  "n_features": 768,
+  "val_auc": 0.8434461308541815,
+  "val_ap": 0.7790899458108634,
+  "test_auc": 0.8264936805821524,
+  "best_iteration": 2136,
+  "trained_at_utc": "2026-08-21T08:21:20.359868+00:00"
+}
