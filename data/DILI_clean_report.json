@@ -1,7 +1,7 @@
 {
-  "generated_at_utc": "2026-08-15T08:32:07.344590+00:00",
+  "generated_at_utc": "2026-08-22T09:22:09.078948+00:00",
   "rdkit_version": "2026.03.5",
-  "script_git_commit": "e9b3a2f35e52f5432d354fb15f5557b49ff8b16e",
+  "script_git_commit": "156d9fbf0783733818a2b6fb453815f7e58105a4",
   "input_file": "data\\DILI_raw.csv",
   "input_file_sha256": "e21812a9ad38aae4d3d52a115481d9f0f77e56e4627279f7c8220aa9629b52af",
   "clean_output_file": "data\\DILI_clean.csv",

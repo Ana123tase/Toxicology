@@ -9,10 +9,10 @@
   "python_version": "3.12.13",
   "ecfp_radius": 2,
   "ecfp_nbits": 2048,
-  "n_input": 463,
-  "n_full": 463,
-  "n_model_ready": 463,
+  "n_input": 459,
+  "n_full": 459,
+  "n_model_ready": 459,
   "n_duplicate_conflict_rows": 0,
   "n_label_review_rows": 0,
-  "timestamp": "2026-08-16 10:54:43"
+  "timestamp": "2026-08-22 11:23:16"
 }

@@ -1,7 +1,7 @@
 {
-  "generated_at_utc": "2026-08-15T08:32:46.611797+00:00",
+  "generated_at_utc": "2026-08-22T09:22:55.598420+00:00",
   "rdkit_version": "2026.03.5",
-  "script_git_commit": "e9b3a2f35e52f5432d354fb15f5557b49ff8b16e",
+  "script_git_commit": "156d9fbf0783733818a2b6fb453815f7e58105a4",
   "input_file": "data\\CYP3A4_raw.csv",
   "input_file_sha256": "f2b864d5969e895095d1e239d87b745e0fa0219db5ca2ee3eee817c8be8ca481",
   "clean_output_file": "data\\CYP3A4_clean.csv",
