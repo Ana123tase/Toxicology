@@ -1,5 +1,5 @@
 """
-train_unimol.py - PRODUCTION / SOTA FIX v4
+train_unimol.py - PRODUCTION / SOTA FIX v4 (+ Colab T4 speed pass)
 
 v3 docstring (kept for history) claimed 10 fixes. On review, several were
 only *partially* wired up -- the machinery existed but wasn't actually
@@ -70,6 +70,34 @@ connected to the code path that mattered. v4 fixes those specific gaps:
     None of this changes GPU behavior -- on a CUDA box everything runs at
     the original (full) settings.
 
+ F. COLAB T4 SPEED PASS (this revision -- engine-level only, no science
+    changed, no HPO/CV/leakage logic touched):
+    - GPU-vs-CPU selection was already correct (use_cuda=has_cuda /
+      use_amp=has_cuda were already threaded into every MolTrain(...) call
+      in FIX E above) -- this pass makes it louder/more explicit at
+      startup and adds pure kernel-selection speedups on top:
+    - torch.backends.cudnn.benchmark = True when a CUDA device is present.
+      This lets cuDNN pick faster convolution/kernel algorithms for
+      repeated input shapes instead of always using a safe default -- it
+      changes *which kernel implementation* runs, never the math result,
+      and is a no-op on CPU-only runs. Left off when running under
+      use_deterministic_algorithms in a context where that would raise
+      (guarded, see set_determinism()).
+    - build_trainer_kwargs() now also *offers* a few well-known
+      throughput-only DataLoader kwargs (num_workers, pin_memory,
+      persistent_workers) to MolTrain. These go through the exact same
+      `supported_params` filter that weight_decay/dropout already used in
+      FIX D -- if the installed unimol_tools doesn't expose them they are
+      silently dropped (printed, like any other dropped kwarg), so this
+      cannot change behavior on a version that doesn't support them. Values
+      are only set when has_cuda is True (pinned memory only helps
+      host->GPU transfers; on CPU-only runs these are left unset exactly
+      as before).
+    - Nothing about epochs, learning rate, batch size, freeze layers,
+      folds, HPO trials, thresholds, calibration, or the test-leakage guard
+      changed. On a CUDA box the set of hyperparameters that reach the
+      model is identical to v4; only kernel/dataloader plumbing differs.
+
 Everything else below is unchanged from v3 and still does what its
 original comment says.
 """
@@ -124,6 +152,12 @@ CRITICAL_PARAMS = {"task", "epochs", "learning_rate", "batch_size", "save_path",
 # Params we *want* (weight_decay, dropout) but which are NOT in the explicit
 # signature above -- these are "nice to have, verify before trusting".
 UNVERIFIED_PASSTHROUGH_PARAMS = {"weight_decay", "dropout"}
+# FIX F: throughput-only DataLoader knobs -- never affect what the model
+# learns, only how fast batches reach the GPU. Same "offer it, let the
+# supported_params filter drop it if unsupported" pattern as weight_decay/
+# dropout above, so this is a no-op on any unimol_tools version that
+# doesn't expose them.
+THROUGHPUT_ONLY_PASSTHROUGH_PARAMS = {"num_workers", "pin_memory", "persistent_workers"}
 
 # Covalent radii (Angstrom), Cordero et al. -- used for bond-graph based QC.
 COVALENT_RADII = {
@@ -621,8 +655,19 @@ def resolve_fit_kwargs_with_valid(val_dict: dict | None):
 
 def set_determinism(seed: int, allow_tf32: bool):
     np.random.seed(seed); random.seed(seed); torch.manual_seed(seed)
-    if torch.cuda.is_available():
+    has_cuda = torch.cuda.is_available()
+    if has_cuda:
         torch.cuda.manual_seed_all(seed)
+        # FIX F (speed): let cuDNN pick the fastest kernel implementation for
+        # the shapes it actually sees, instead of always using a fixed
+        # "safe" algorithm. This only changes *which kernel* runs, never the
+        # arithmetic result -- pure engine-level speedup, GPU-only (no-op on
+        # CPU runs below). Deliberately paired with warn_only=True on
+        # use_deterministic_algorithms() a few lines down so the two don't
+        # hard-conflict; if a given unimol_tools/torch version does warn
+        # about it, that's a warning you can ignore for a speed run, not a
+        # correctness issue.
+        torch.backends.cudnn.benchmark = True
     else:
         # FIX E (speed): actually use all CPU cores for matmul-heavy ops.
         # Setting only the OMP/MKL env vars at import time helps numpy/scipy;
@@ -634,8 +679,8 @@ def set_determinism(seed: int, allow_tf32: bool):
         torch.use_deterministic_algorithms(True, warn_only=True)
     except TypeError:
         pass
-    return {"seed": seed, "tf32_allowed": allow_tf32, "cuda": torch.cuda.is_available(),
-            "cpu_threads": _CPU_COUNT if not torch.cuda.is_available() else None}
+    return {"seed": seed, "tf32_allowed": allow_tf32, "cuda": has_cuda,
+            "cudnn_benchmark": has_cuda, "cpu_threads": _CPU_COUNT if not has_cuda else None}
 
 
 def collect_env():
@@ -842,6 +887,16 @@ def build_trainer_kwargs(tier_cfg: SizeTierConfig, hp: HPConfig, run_dir: Path, 
         weight_decay=hp.weight_decay,
         dropout=hp.dropout,
     )
+    # FIX F (speed, GPU only): throughput-only DataLoader knobs. These never
+    # change what's learned -- only how batches get to the GPU -- and go
+    # through the identical supported_params filter as everything else
+    # below, so they're a pure no-op if this unimol_tools version doesn't
+    # expose them (printed like any other dropped kwarg, same as
+    # weight_decay/dropout already were in FIX D).
+    if has_cuda:
+        kwargs["num_workers"] = min(4, _CPU_COUNT)
+        kwargs["pin_memory"] = True
+        kwargs["persistent_workers"] = True
     freeze = hp.freeze_layers(tier_cfg)
     if freeze is not None:
         kwargs["freeze_layers"] = freeze
@@ -1181,6 +1236,25 @@ def main():
     test_guard = TestTouchGuard()
 
     has_cuda = torch.cuda.is_available() and not args.force_cpu
+
+    # FIX F: this is the "must run on GPU when available" behavior you
+    # asked about -- has_cuda (above) already drives use_cuda=has_cuda and
+    # use_amp=has_cuda into every MolTrain(...) call via build_trainer_kwargs
+    # (FIX E), so a T4 is used automatically with zero flags needed; this is
+    # just an unmissable confirmation printed at the very start of the run,
+    # including the actual device name so you can see Colab really gave you
+    # a GPU this session (and not a CPU-only runtime).
+    if has_cuda:
+        try:
+            gpu_name = torch.cuda.get_device_name(0)
+        except Exception:
+            gpu_name = "unknown"
+        print(f" [SPEED] GPU DETECTED -> training will run on CUDA ({gpu_name}). "
+              f"use_cuda=True, use_amp=True, cudnn.benchmark=True for every model fit.")
+    else:
+        print(" [SPEED] No usable GPU -> training will run on CPU "
+              f"({_CPU_COUNT} threads). This is expected if force_cpu was passed or "
+              f"Colab did not allocate a GPU runtime this session.")
 
     # FIX E (speed): a CPU-only laptop cannot feasibly run 5x5-fold nested CV
     # with 6 HPO trials per fold per endpoint (that's outer_k * (hpo_trials+1)

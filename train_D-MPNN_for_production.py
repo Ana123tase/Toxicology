@@ -95,6 +95,38 @@ lineage archiving, or how the held-out test set is used):
       which is exactly the class of mistake the rest of this file guards
       against. For fast smoke-tests, point --new-data / DATA_DIR at a
       small standalone test dataset instead.
+
+GPU / GOOGLE COLAB (T4) NOTES -- added on top of the CPU speed notes above,
+still infra-only, same guarantee (promotion thresholds, warm-start LR,
+epoch counts, hash checks, lineage archiving, held-out-set usage: all
+byte-for-byte unchanged):
+    - Accelerator/device is now auto-detected once at import time
+      (_detect_accelerator()). If torch.cuda.is_available() -> "gpu",
+      devices=1 (Colab gives you exactly one T4). Otherwise -> "cpu",
+      devices=1, identical to the original hardcoded behavior. Every
+      pl.Trainer(...) call (evaluate(), production, incremental) uses
+      this shared ACCELERATOR/DEVICES/PRECISION instead of a hardcoded
+      accelerator="cpu".
+    - On GPU, Trainer precision is set to "16-mixed" (automatic mixed
+      precision) -- a T4's tensor cores are roughly 2-4x faster in fp16
+      than fp32 for this kind of model, and PyTorch Lightning handles the
+      loss-scaling/casting automatically. On CPU, precision stays "32-true"
+      (fp32), i.e. exactly the original behavior.
+    - cudnn.benchmark is turned on when a GPU is present (no-op, harmless
+      on CPU-only runs since it's gated behind cuda.is_available()).
+    - DataLoaders now pass pin_memory=True when a GPU is present (faster
+      host->device transfer), with the same try/except-and-fall-back
+      pattern already used for persistent_workers so it degrades cleanly
+      on chemprop versions that don't accept the kwarg.
+    - The chemeleon checkpoint download/load path is untouched -- it's
+      still read to CPU RAM once and handed to Lightning, which moves
+      parameters onto the GPU itself during trainer.fit()/trainer.test().
+    - A small Colab bootstrap cell is included further down (guarded by
+      `if IN_COLAB:`) that installs the handful of packages Colab doesn't
+      ship with (chemprop, lightning) and prints which accelerator was
+      detected, so you can just paste this whole file into a Colab cell
+      (or `!python train_D-MPNN_for_production.py production` in a Colab
+      terminal cell) and it does the right thing on a T4 or on CPU.
 """
 
 import os
@@ -124,6 +156,26 @@ from urllib.request import urlretrieve
 
 import pandas as pd
 import torch
+
+# ---------------------------------------------------------------------------
+# Google Colab bootstrap (no-op outside Colab). Only installs packages /
+# prints diagnostics -- does not touch any training logic below.
+# ---------------------------------------------------------------------------
+try:
+    import google.colab  # noqa: F401
+    IN_COLAB = True
+except ImportError:
+    IN_COLAB = False
+
+if IN_COLAB:
+    import importlib
+    _need = []
+    for _pkg in ("chemprop", "lightning"):
+        if importlib.util.find_spec(_pkg) is None:
+            _need.append(_pkg)
+    if _need:
+        os.system(f"pip install -q {' '.join(_need)}")
+
 from lightning import pytorch as pl
 from lightning.pytorch.callbacks import Callback, EarlyStopping
 from chemprop import data, featurizers, models, nn
@@ -135,6 +187,27 @@ try:
 except Exception:
     pass
 
+# ---------------------------------------------------------------------------
+# GPU / accelerator auto-detection (Colab T4 -> "gpu", else -> "cpu").
+# Detected once, at import time, and reused by every pl.Trainer(...) call
+# below. This is the only thing that decides GPU vs CPU -- nothing about
+# batch size, epoch count, LR, promotion threshold, or data handling
+# changes based on it.
+# ---------------------------------------------------------------------------
+
+def _detect_accelerator():
+    if torch.cuda.is_available():
+        try:
+            torch.backends.cudnn.benchmark = True
+        except Exception:
+            pass
+        gpu_name = torch.cuda.get_device_name(0)
+        return "gpu", 1, "16-mixed", gpu_name
+    return "cpu", 1, "32-true", None
+
+ACCELERATOR, DEVICES, PRECISION, _GPU_NAME = _detect_accelerator()
+USE_GPU = ACCELERATOR == "gpu"
+
 # --- CROSS-PLATFORM IMPORT FOR FILE LOCKING ---
 try:
     import fcntl
@@ -145,6 +218,11 @@ except ImportError:
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("train_dmpnn_incremental")
+
+log.info(
+    f"Accelerator = {ACCELERATOR} (devices={DEVICES}, precision={PRECISION})"
+    + (f" [{_GPU_NAME}]" if _GPU_NAME else " [no GPU visible -- falling back to CPU, nothing else changes]")
+)
 
 DATASETS = [("DILI", "Y"), ("hERG", "Y"), ("CYP3A4", "Y"), ("Ames", "Overall"), ("Teratogenicity", "Y")]
 
@@ -161,7 +239,15 @@ CHEMELEON_MIN_BYTES = 1_000_000
 CHEMELEON_SHA256: Optional[str] = None
 # Default 0 to stay safe on 8GB RAM (worker subprocesses duplicate data in
 # memory). Override with DMPNN_NUM_WORKERS=N if you want to experiment.
+# Colab gives you 2 vCPUs, so the existing default of 2 is already a good
+# fit there too -- left untouched.
 NUM_WORKERS = int(os.environ.get("DMPNN_NUM_WORKERS", "2"))
+# Inference-only batch size for evaluate() (held-out AUROC scoring). This is
+# NOT a training hyperparameter -- no gradients, no optimizer step, batch_norm
+# is off in this model -- so making it bigger changes nothing about the
+# result, only how many forward-pass round-trips it takes to get there.
+# Bigger is safe on a T4's 16GB; keeps the old value on CPU.
+EVAL_BATCH_SIZE = int(os.environ.get("DMPNN_EVAL_BATCH_SIZE", "512" if USE_GPU else "128"))
 ENCODER_STATE_VALUES = {"frozen", "fine-tuned"}
 MIN_NEW_ROWS_FOR_MONITOR = 20 # below this, we don't fake a validation set
 
@@ -185,6 +271,17 @@ class TuningConfig:
     dropout_override: Optional[float] = None
     max_extra_epochs: int = 10
     seed: int = DEFAULT_SEED
+    # OPT-IN ONLY, off by default (None = use the validated batch_size from
+    # *_dmpnn_metrics.json, unchanged). Unlike the eval-only batch size
+    # above, this DOES change training dynamics -- fewer, larger gradient
+    # updates per epoch -- so it is not silently applied. Set explicitly
+    # (CLI: --gpu-batch-size) when you want to trade a small amount of
+    # optimization-trajectory risk for GPU utilization / wall-clock time,
+    # e.g. on a time-limited Colab T4 session. For incremental rounds this
+    # is still caught by the existing held-out AUROC promotion gate; for a
+    # production (from-scratch) run there is no such gate, so treat a
+    # from-scratch run made with this set as a new baseline to sanity-check.
+    train_batch_size_override: Optional[int] = None
 
 # ---------------------------------------------------------------------------
 # small infra helpers
@@ -343,7 +440,10 @@ def _load_chemeleon_ckpt_dict():
         # NOTE: weights_only=False is required because chemprop/lightning checkpoints
         # contain more than plain tensors. Only ever point this at CHEMELEON_PATH
         # (integrity-checked above) or locally produced checkpoints -- never load
-        # an untrusted .pt/.ckpt file this way.
+        # an untrusted .pt/.ckpt file this way. Loaded to CPU RAM regardless of
+        # accelerator -- Lightning moves parameters onto the GPU itself during
+        # trainer.fit()/trainer.test(), so this stays map_location="cpu" even
+        # when ACCELERATOR == "gpu".
         _CHEMELEON_CKPT_CACHE = torch.load(str(CHEMELEON_PATH), map_location="cpu", weights_only=False)
     return _CHEMELEON_CKPT_CACHE
 
@@ -424,16 +524,34 @@ def make_dataset(df, target_col):
 
 def _build_loader(dset, batch_size, shuffle, num_workers=NUM_WORKERS):
     """Thin wrapper around data.build_dataloader that opts into
-    persistent_workers when num_workers > 0. Falls back cleanly if the
-    installed chemprop version doesn't support that kwarg. With the
-    default num_workers=0, behavior is identical to a direct
-    data.build_dataloader(...) call."""
+    persistent_workers when num_workers > 0, and pin_memory when a GPU is
+    present (faster host->device transfer for the batches DataLoader
+    produces). Falls back cleanly if the installed chemprop version
+    doesn't support either kwarg. With num_workers=0 and no GPU, behavior
+    is identical to a direct data.build_dataloader(...) call."""
     kwargs = dict(batch_size=batch_size, num_workers=num_workers, shuffle=shuffle)
+
+    # Try the most feature-complete call first, then fall back one kwarg
+    # at a time so this still works on older chemprop versions. prefetch_factor
+    # lets worker processes build the *next* batch while the GPU is still
+    # busy with the current one -- pure overlap, no effect on what gets
+    # computed.
+    attempts = []
+    if num_workers > 0 and USE_GPU:
+        attempts.append(dict(persistent_workers=True, pin_memory=True, prefetch_factor=4))
+        attempts.append(dict(persistent_workers=True, pin_memory=True))
     if num_workers > 0:
+        attempts.append(dict(persistent_workers=True, prefetch_factor=4))
+        attempts.append(dict(persistent_workers=True))
+    if USE_GPU:
+        attempts.append(dict(pin_memory=True))
+    attempts.append({})
+
+    for extra in attempts:
         try:
-            return data.build_dataloader(dset, persistent_workers=True, **kwargs)
+            return data.build_dataloader(dset, **kwargs, **extra)
         except TypeError:
-            pass
+            continue
     return data.build_dataloader(dset, **kwargs)
 
 def load_held_out_test(name, target_col):
@@ -445,11 +563,12 @@ def load_held_out_test(name, target_col):
     validate_dataframe(df, target_col, str(path))
     return make_dataset(df, target_col), len(df)
 
-def evaluate(mpnn, dset, batch_size=128):
+def evaluate(mpnn, dset, batch_size=EVAL_BATCH_SIZE):
     loader = _build_loader(dset, batch_size, shuffle=False)
     trainer = pl.Trainer(
         logger=False, enable_checkpointing=False, enable_progress_bar=False,
-        enable_model_summary=False, accelerator="cpu", devices=1,
+        enable_model_summary=False, accelerator=ACCELERATOR, devices=DEVICES,
+        precision=PRECISION, num_sanity_val_steps=0,
     )
     result = trainer.test(mpnn, loader, verbose=False)
     if not result or "test/BinaryAUROC" not in result[0]:
@@ -511,6 +630,16 @@ def train_production_endpoint(name, target_col, tuning: TuningConfig = TuningCon
         n_epochs = int(best_epoch) + 1
         freeze_encoder = src["encoder"] == "frozen"
         batch_size = src.get("batch_size", 32 if src.get("n_train", 0) < 500 else 128)
+        if tuning.train_batch_size_override is not None:
+            log.warning(
+                f"[{name}] --gpu-batch-size override active: using batch_size="
+                f"{tuning.train_batch_size_override} instead of the validated "
+                f"{batch_size}. This changes training dynamics (fewer/larger "
+                f"gradient steps per epoch), not just infra speed -- there is no "
+                f"promotion gate on a from-scratch production run, so treat this "
+                f"checkpoint as a new baseline and sanity-check it before relying on it."
+            )
+            batch_size = tuning.train_batch_size_override
 
         dfs = []
         for split in ("train", "val", "test"):
@@ -536,7 +665,8 @@ def train_production_endpoint(name, target_col, tuning: TuningConfig = TuningCon
 
         trainer = pl.Trainer(
             logger=False, enable_checkpointing=False, enable_progress_bar=False,
-            enable_model_summary=False, accelerator="cpu", devices=1,
+            enable_model_summary=False, accelerator=ACCELERATOR, devices=DEVICES,
+            precision=PRECISION, num_sanity_val_steps=0,
             max_epochs=n_epochs, callbacks=callbacks,
             gradient_clip_val=tuning.grad_clip_val,
             deterministic=True,
@@ -557,6 +687,8 @@ def train_production_endpoint(name, target_col, tuning: TuningConfig = TuningCon
             "weight_decay": tuning.weight_decay, "chemeleon_dim": src["chemeleon_dim"],
             "foundation_model": "chemeleon_mp",
             "seed": tuning.seed,
+            "batch_size_used": batch_size,
+            "train_batch_size_override": tuning.train_batch_size_override,
             "model_path": str(out),
             "parent_checkpoint": None,
             "checkpoint_hash": file_hash(out),
@@ -627,6 +759,15 @@ def train_incremental_endpoint(name, target_col, new_data_path, tuning: TuningCo
 
         combined_dset = make_dataset(combined, target_col)
         batch_size = src.get("batch_size", 32 if len(combined) < 500 else 128)
+        if tuning.train_batch_size_override is not None:
+            log.warning(
+                f"[{name}] --gpu-batch-size override active: using batch_size="
+                f"{tuning.train_batch_size_override} instead of the validated "
+                f"{batch_size}. This changes training dynamics for this round. "
+                f"It's still covered by the held-out AUROC promotion gate below, "
+                f"so a regression will be caught and rejected as usual."
+            )
+            batch_size = tuning.train_batch_size_override
         train_loader = _build_loader(combined_dset, batch_size, shuffle=True)
 
         # A slice of the *new* data can double as an early-stopping monitor --
@@ -668,7 +809,8 @@ def train_incremental_endpoint(name, target_col, new_data_path, tuning: TuningCo
 
         trainer = pl.Trainer(
             logger=False, enable_checkpointing=False, enable_progress_bar=False,
-            enable_model_summary=False, accelerator="cpu", devices=1,
+            enable_model_summary=False, accelerator=ACCELERATOR, devices=DEVICES,
+            precision=PRECISION, num_sanity_val_steps=0,
             max_epochs=tuning.max_extra_epochs, callbacks=callbacks,
             gradient_clip_val=tuning.grad_clip_val,
             deterministic=True,
@@ -696,6 +838,8 @@ def train_incremental_endpoint(name, target_col, new_data_path, tuning: TuningCo
             "n_new_rows": n_new, "n_total_rows_trained_on": len(combined),
             "warm_start_lr": warm_start_lr, "weight_decay": tuning.weight_decay,
             "seed": tuning.seed,
+            "batch_size_used": batch_size,
+            "train_batch_size_override": tuning.train_batch_size_override,
             "used_early_stopping_monitor": run_early_stopping,
             "held_out_n": n_held_out,
             "baseline_held_out_auroc": baseline_auroc,
@@ -736,6 +880,11 @@ def main(argv=None):
     p_prod.add_argument("--confirm-rebuild", action="store_true",
                          help="Required if a lineage with promoted incremental rounds already exists.")
     p_prod.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    p_prod.add_argument("--gpu-batch-size", type=int, default=None,
+                         help="OPT-IN. Overrides the validated training batch_size (e.g. 256 on a "
+                              "T4) to improve GPU utilization / wall-clock time. Changes training "
+                              "dynamics, not just speed -- off by default. No promotion gate exists "
+                              "for production runs, so treat the result as a new baseline.")
 
     p_inc = sub.add_parser("incremental", help="Warm-start retrain on old+new data")
     p_inc.add_argument("--dataset", required=True, help="Dataset name (must have an existing lineage)")
@@ -743,6 +892,10 @@ def main(argv=None):
     p_inc.add_argument("--max-extra-epochs", type=int, default=10)
     p_inc.add_argument("--early-stopping-patience", type=int, default=None)
     p_inc.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    p_inc.add_argument("--gpu-batch-size", type=int, default=None,
+                        help="OPT-IN. Overrides the validated training batch_size for this round. "
+                             "Still covered by the held-out AUROC promotion gate, so a regression "
+                             "is caught and rejected automatically.")
 
     args = parser.parse_args(argv)
 
@@ -760,7 +913,7 @@ def main(argv=None):
             try:
                 train_production_endpoint(
                     n, name_to_target[n],
-                    tuning=TuningConfig(seed=args.seed),
+                    tuning=TuningConfig(seed=args.seed, train_batch_size_override=args.gpu_batch_size),
                     confirm_rebuild=args.confirm_rebuild,
                 )
             except Exception as e:
@@ -780,6 +933,7 @@ def main(argv=None):
                     max_extra_epochs=args.max_extra_epochs,
                     early_stopping_patience=args.early_stopping_patience,
                     seed=args.seed,
+                    train_batch_size_override=args.gpu_batch_size,
                 ),
             )
         except Exception as e:

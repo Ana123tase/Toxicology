@@ -14,20 +14,26 @@ Follows the same "never guess, log for review" policy as featurize.py:
     handled in featurize.py. Your original parquet files are never touched.
     - Nothing is silently discarded without a trace you can inspect.
 
-SPEED NOTE (added):
-    Conformer embedding + force-field optimization is CPU-bound and was
-    previously running single-threaded (params.numThreads = 1), processing
-    ~31k molecules one at a time. This version parallelizes across molecules
-    using multiprocessing -- one worker process per molecule batch, each
-    worker still doing single-threaded RDKit work internally (mixing RDKit's
-    own multithreading with process-level parallelism causes oversubscription
-    and is usually *slower*, not faster).
-    N_WORKERS defaults conservatively for an 8GB RAM / low-core laptop
-    (Lenovo i3-1215U: 2 performance + 4 efficiency cores, 8 threads). Each
-    worker is a plain Python process holding one molecule's data at a time,
-    so RAM growth is small and roughly linear in worker count -- 4 workers
-    is a safe default that leaves headroom for the OS and your IDE/terminal.
-    Override with the UNIMOL_PREP_WORKERS env var if you want to tune it.
+SPEED NOTE (Colab edition):
+    Conformer embedding + force-field optimization (MMFF/UFF) is CPU-bound
+    classical chemistry -- RDKit has no GPU path for it, so a T4 does not
+    accelerate this particular step. GPU_STATUS below just reports what's
+    visible in the runtime so you know it's there and idle for now; it gets
+    used by your D-MPNN / MoLFormer training scripts later, not this one.
+
+    All the actual speedup here is CPU parallelism: one worker process per
+    molecule batch, each worker doing single-threaded RDKit work internally
+    (mixing RDKit's own multithreading with process-level parallelism causes
+    oversubscription and is usually *slower*, not faster).
+
+    N_WORKERS now uses ALL vCPUs Colab gives the runtime. The previous
+    "-2 headroom" cap existed because the original target was an 8GB/i3
+    laptop that also had to run your IDE and OS alongside the script --
+    Colab's CPU is dedicated to the notebook process, so there's nothing to
+    reserve headroom for. Override with UNIMOL_PREP_WORKERS if you ever want
+    to cap it (e.g. to leave a core free for another cell running in
+    parallel).
+
     No science changed: same conformer count, same fallback policy, same
     outputs. This only changes how fast you get there.
 
@@ -82,15 +88,34 @@ N_CONFS_ATTEMPT = 5  # generate this many candidate conformers per molecule
 MAX_EMBED_ATTEMPTS = 2  # 1 normal ETKDGv3 attempt, then 1 fallback with random coords
 RANDOM_SEED = 42
 
-# --- Speed settings -----------------------------------------------------
-# Default worker count: leave 2+ threads free for OS/IDE on an 8-thread
-# laptop with only 8GB RAM. Override: UNIMOL_PREP_WORKERS=6 python prepare_conformers.py
-DEFAULT_WORKERS = max(1, min(4, (os.cpu_count() or 4) - 2))
+# --- GPU probe (informational only -- see SPEED NOTE above) --------------
+# This step has no GPU-executable code path (RDKit conformer/force-field
+# work is CPU-only). We still check and print status so you can confirm
+# Colab handed you a T4 before your later (actually GPU-bound) training
+# steps, without silently pretending this script uses it.
+def _probe_gpu():
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return True, torch.cuda.get_device_name(0)
+        return False, None
+    except ImportError:
+        return False, None
+
+
+GPU_AVAILABLE, GPU_NAME = _probe_gpu()
+DEVICE = "cuda" if GPU_AVAILABLE else "cpu"
+
+# --- Speed settings (Colab: full-core CPU parallelism) -------------------
+# Colab's CPU is dedicated to this notebook, so use every vCPU the runtime
+# gives you -- no "-2 for OS/IDE" reservation needed (that was for sharing
+# an 8GB laptop with other running programs).
+DEFAULT_WORKERS = max(1, os.cpu_count() or 2)
 N_WORKERS = int(os.environ.get("UNIMOL_PREP_WORKERS", DEFAULT_WORKERS))
-# Rows handed to each worker per task-queue pop. Too small = pickling/IPC
-# overhead dominates; too large = poor load balancing and higher peak RAM
-# per worker. 8-16 is a good range for molecules this size.
-CHUNKSIZE = 8
+# Rows handed to each worker per task-queue pop. Slightly larger than the
+# laptop default to cut IPC/pickling overhead now that more workers are
+# typically active at once. 16-24 is a good range for molecules this size.
+CHUNKSIZE = 16
 # -------------------------------------------------------------------------
 
 
@@ -299,6 +324,8 @@ def save_outputs(records, failures, n_input, dataset_name, split_name, output_di
         "n_confs_attempted": N_CONFS_ATTEMPT,
         "random_seed": RANDOM_SEED,
         "n_workers_used": N_WORKERS,
+        "gpu_available": GPU_AVAILABLE,
+        "gpu_name": GPU_NAME,
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
     meta_path = out_dir / f"{dataset_name}_{split_name}_meta.json"
@@ -306,6 +333,13 @@ def save_outputs(records, failures, n_input, dataset_name, split_name, output_di
 
 
 def main():
+    if GPU_AVAILABLE:
+        print(f"GPU detected: {GPU_NAME} (idle for this step -- conformer generation "
+              f"is CPU-only; the GPU will be used by your D-MPNN/MoLFormer scripts)")
+    else:
+        print("No GPU detected -- running on CPU (this step wouldn't use a GPU anyway)")
+    print(f"CPU workers for this run: {N_WORKERS} (all available vCPUs)")
+
     output_dir = "data/unimol_cache"
     summary = []
 
@@ -350,6 +384,6 @@ def main():
 
 if __name__ == "__main__":
     # Required on Windows/macOS for multiprocessing with the "spawn" start
-    # method; harmless no-op on Linux ("fork"). Keep this guard -- without
-    # it, Pool() can recursively re-import and re-launch this script.
+    # method; harmless no-op on Linux ("fork") -- and Colab notebooks run
+    # Linux, but this guard is kept for safety/portability regardless.
     main()
