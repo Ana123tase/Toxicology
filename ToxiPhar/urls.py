@@ -16,11 +16,15 @@ Including another URLconf
 """
 # toxpredict/urls.py
 from django.urls import path, include
+from django.contrib import admin
 
 urlpatterns = [
+    path("admin/", admin.site.urls),
+    path('accounts/', include('accounts.urls')),
     path("api/", include("api.urls")),
     path("reports/", include("reports.urls")),
     path("", include("web.urls")),
+    path('subscriptions/', include('subscriptions.urls')),
 ]
 
 

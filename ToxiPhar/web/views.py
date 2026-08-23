@@ -1,6 +1,12 @@
 from django.shortcuts import render
 from predictor.services import PredictionService, PredictionError
 
+
+
+def home(request):
+    return render(request, "web/landing.html")
+
+
 def predict_view(request):
     result = None
     error = None

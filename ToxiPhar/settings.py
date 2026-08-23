@@ -12,8 +12,17 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 
 from pathlib import Path
 
+from pathlib import Path
+import sys
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent
+
+# Make the standalone Toxicology/ scripts (clean_smiles.py, featurize.py, etc.)
+# importable from anywhere in the Django project.
+TOX_SRC_DIR = BASE_DIR.parent
+if str(TOX_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(TOX_SRC_DIR))
 
 
 # Quick-start development settings - unsuitable for production
@@ -37,10 +46,12 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
-    "predictor",     # ← add this
-    "api",           # ← you'll add this too, once you create it the same way
+    "predictor.apps.PredictorConfig",
+    # "api",          # uncomment once api/ has its own apps.py + __init__.py
     "web",
     "reports",
+    "accounts",
+    "subscriptions",
 ]
 
 MIDDLEWARE = [
@@ -118,8 +129,12 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = "static/"
+STATICFILES_DIRS = [BASE_DIR / "web" / "static"]
 
+
+# Email
+# https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration

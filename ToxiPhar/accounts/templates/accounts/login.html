@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LogPhar – Login</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #f0f4f8;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .card {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo h1 {
+            color: #1a6b3c;
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        .logo p {
+            color: #888;
+            font-size: 13px;
+            margin-top: 4px;
+        }
+
+        .form-group {
+            margin-bottom: 18px;
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #444;
+            margin-bottom: 6px;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            transition: border 0.2s;
+        }
+
+        input:focus { border-color: #1a6b3c; }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background: #1a6b3c;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+
+        .btn:hover { background: #155c33; }
+
+        .errors {
+            background: #fff0f0;
+            border: 1px solid #ffcccc;
+            color: #cc0000;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-bottom: 16px;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 13px;
+            color: #888;
+        }
+
+        /* Responsive adjustment for small phones */
+        @media (max-width: 420px) {
+            .card { padding: 28px 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="logo">
+            <h1>💊 LogPhar</h1>
+            <p>Pharmacy Management System</p>
+        </div>
+
+        {% if form.errors %}
+        <div class="errors">
+            Invalid username or password. Please try again.
+        </div>
+        {% endif %}
+
+        {% if messages %}
+            {% for message in messages %}
+                <div class="errors">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+
+        <form method="POST">
+            {% csrf_token %}
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" name="username" id="username" placeholder="Enter your username" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" name="password" id="password" placeholder="Enter your password" required>
+            </div>
+            <button type="submit" class="btn">Log In</button>
+
+            <div class="footer" style="margin-top: 10px;">
+            I you don't have an account, <a href="{% url 'register' %}" style="color:#1a6b3c; font-weight:600; text-decoration:none; font-size:13px;">REGISTER first!</a>
+            <br> <br>
+            <a href="{% url 'web:home' %}" style="color:#1a6b3c; font-weight:600; text-decoration:none; font-size:13px;">Learn more about the system</a>
+            <br> <br>
+            <a href="{% url 'password_reset' %}" style="color:#1a6b3c; font-weight:600; text-decoration:none; font-size:13px;">Forgot password?</a>
+
+            </div>
+        </form>
+
+        <div class="footer">
+            LogPhar &copy; 2026 · Secure Pharmacy Platform
+            <br>Developed by <br>Boti Technologies: anastasedukunda@gmail.com
+        </div>
+    </div>
+</body>
+</html>

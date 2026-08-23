@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+
+{% block title %}Premium Plans - LogPhar{% endblock %}
+
+{% block content %}
+<style>
+  .premium-wrapper{font-family:Arial, sans-serif; max-width:1000px; margin:auto; padding:20px;}
+  .premium-wrapper .header{text-align:center;margin-bottom:30px}
+  .premium-wrapper .grid{display:flex;gap:20px;flex-wrap:wrap;justify-content:center}
+  .premium-wrapper .card{background:white;border:1px solid #ddd;border-radius:10px;padding:20px;width:280px;text-align:center; box-shadow:none;}
+  .premium-wrapper .card.best{border:2px solid #16a34a;box-shadow:0 4px 12px rgba(0,0,0,0.1)}
+  .premium-wrapper .badge{background:#16a34a;color:white;padding:5px 10px;border-radius:20px;font-size:12px;display:inline-block;margin-bottom:10px}
+  .premium-wrapper .price{font-size:36px;font-weight:bold;margin:10px 0}
+  .premium-wrapper .btn-plan{display:block;padding:12px;background:#2563eb;color:white;text-decoration:none;border-radius:8px;margin-top:15px;font-weight:bold; text-align:center;}
+  .premium-wrapper .btn-plan.best{background:#16a34a}
+  .premium-wrapper .alert-box{background:#dbeafe;padding:12px;border-radius:8px;text-align:center;margin-bottom:20px}
+  .premium-wrapper .alert-warning{background:#fff8e6;border:1px solid #ffe4a3;color:#8a6500;}
+  .premium-wrapper .alert-error{background:#fff0f0;border:1px solid #ffcccc;color:#cc0000;}
+  @media(max-width:600px){
+    .premium-wrapper .card{width:100% !important;}
+  }
+</style>
+
+<div class="premium-wrapper">
+  <div class="header">
+    <h2>Upgrade to Premium</h2>
+    <p>Unlock Insurance, Reports and more</p>
+    <br>
+    <p style="font-size:13px; color:#666; margin-top:6px;">Prices shown are not fixed, we can reduce them based on the size of your Pharmacy.</p>
+    <a href="{% url 'dashboard' %}">Back to Dashboard</a>
+  </div>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert-box {% if message.tags == 'warning' %}alert-warning{% elif message.tags == 'error' %}alert-error{% endif %}" style="font-weight:600;">
+        {{ message }}
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  {% if current_sub %}
+  <div class="alert-box">
+    Current: {{ current_sub.plan.name }} - {% if current_sub.is_active %} {{ current_sub.days_remaining }} days left {% else %} Expired {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="grid">
+    {% for plan in plans %}
+    <div class="card {% if plan.slug == 'premium-yearly' %}best{% endif %}">
+      {% if plan.slug == 'premium-yearly' %}<span class="badge">BEST VALUE</span>{% endif %}
+      <h3>{{ plan.name }}</h3>
+      <div class="price">${{ plan.price }}</div>
+      <div>{{ plan.get_billing_cycle_display }}<br><small>${{ plan.price_per_month }}/mo</small></div>
+      <hr>
+      <div style="text-align:left;font-size:14px">
+        ✔ Insurance Module<br>
+        ✔ Advanced Reports<br>
+        ✔ Purchases<br>
+        ✔ Priority Support
+      </div>
+      <a class="btn-plan {% if plan.slug == 'premium-yearly' %}best{% endif %}" href="{% url 'subscribe_plan' plan.slug %}">Subscribe Now</a>
+    </div>
+    {% empty %}
+    <p>No plans. Run: python manage.py seed_plans</p>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
