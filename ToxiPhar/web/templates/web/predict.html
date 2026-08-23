@@ -1,0 +1,21 @@
+<form method="post" action="{% url 'web:predict' %}">
+  {% csrf_token %}
+  <label for="smiles">Enter SMILES</label>
+  <input type="text" name="smiles" id="smiles" placeholder="CC(=O)Oc1ccccc1C(=O)O" required>
+  <button type="submit">Predict</button>
+</form>
+
+{% if result %}
+  <h2>Results for {{ result.smiles_cleaned }}</h2>
+  <table>
+    <tr><th>Endpoint</th><th>Probability</th><th>Predicted class</th></tr>
+    {% for endpoint, data in result.predictions.items %}
+    <tr>
+      <td>{{ endpoint }}</td>
+      <td>{{ data.probability }}</td>
+      <td>{{ data.predicted_class }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <a href="{% url 'reports:download' %}?smiles={{ result.smiles_cleaned }}">Download PDF report</a>
+{% endif %}
