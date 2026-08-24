@@ -50,14 +50,26 @@ class PredictionService:
             raise PredictionError("Invalid SMILES: could not be parsed by RDKit.")
 
         try:
-            cleaned = clean_smiles(raw_smiles)
+            cleaning_result = clean_smiles(raw_smiles)
         except Exception as e:
             logger.warning("clean_smiles failed for input hash=%s: %s", _short_hash(raw_smiles), e)
             raise PredictionError(f"SMILES could not be standardized: {e}") from e
 
-        mol = smiles_to_mol(cleaned)
+        # clean_smiles() returns a CleaningResult object, not a plain string —
+        # pull the actual cleaned SMILES out of it, and surface its own
+        # failure reason if it didn't produce one.
+        cleaned_smiles = cleaning_result.smiles_clean
+        if not cleaned_smiles:
+            reason = cleaning_result.review_reason or cleaning_result.status or "unknown reason"
+            logger.warning(
+                "clean_smiles produced no output for input hash=%s: %s",
+                _short_hash(raw_smiles), reason
+            )
+            raise PredictionError(f"SMILES could not be standardized: {reason}")
+
+        mol = smiles_to_mol(cleaned_smiles)
         if mol is None:
-            raise PredictionError("Cleaned SMILES could not be parsed by RDKit.")
+            raise PredictionError("Standardized SMILES could not be parsed by RDKit.")
 
         features_df = featurize_single(mol)
 
@@ -83,6 +95,6 @@ class PredictionService:
 
         return {
             "smiles_input": raw_smiles,
-            "smiles_cleaned": cleaned,
+            "smiles_cleaned": cleaned_smiles,
             "predictions": results,
         }

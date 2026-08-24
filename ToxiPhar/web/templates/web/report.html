@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}ToxiPhar — Report{% endblock %}
+
+{% block content %}
+
+  <h1>Toxicity screening report</h1>
+  <p class="muted">Computational predictions from ToxiPhar's production models, generated for prioritization — not a substitute for experimental validation.</p>
+
+  <form method="post" class="card">
+    {% csrf_token %}
+    <div class="field-group">
+      <label for="smiles">SMILES</label>
+      <input
+        type="text"
+        id="smiles"
+        name="smiles"
+        class="mono"
+        placeholder="e.g. CC(=O)Oc1ccccc1C(=O)O"
+        value="{{ smiles_submitted|default:'' }}"
+        autocomplete="off"
+        required
+      >
+    </div>
+    <button type="submit" class="btn btn-primary">Generate report</button>
+  </form>
+
+  {% if error %}
+    <ul class="messages">
+      <li class="error">{{ error }}</li>
+    </ul>
+  {% endif %}
+
+  {% if result %}
+    <div class="card">
+      <h2>Compound identifiers</h2>
+      <p class="muted">Input SMILES</p>
+      <p class="data">{{ result.smiles_input }}</p>
+      <p class="muted">Standardized SMILES</p>
+      <p class="data">{{ result.smiles_cleaned }}</p>
+    </div>
+
+    <div class="card">
+      <h2>Predicted endpoints</h2>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Endpoint</th>
+              <th>Probability</th>
+              <th>Predicted class</th>
+              <th>Risk band</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for ep in endpoints %}
+              <tr>
+                <td>{{ ep.name }}</td>
+                <td class="mono">{{ ep.probability }}</td>
+                <td>{{ ep.predicted_class }}</td>
+                <td>
+                  <span class="badge badge-{{ ep.risk_level }}">
+                    {{ ep.risk_level|upper }}
+                  </span>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Interpretation</h2>
+      <p>
+        These probabilities reflect the likelihood each endpoint's production model assigns to
+        a positive (adverse) finding, based on patterns learned from prior labeled compounds.
+        They are intended to help prioritize which endpoints warrant closer scrutiny —
+        not to confirm or rule out toxicity on their own.
+      </p>
+      <p>
+        A compound flagged here in the <span class="badge badge-danger">DANGER</span> band
+        should be treated as a candidate for early experimental follow-up
+        (e.g. in vitro assay confirmation), not as a compound already disqualified.
+        Likewise, a <span class="badge badge-safe">SAFE</span> band result reduces
+        priority for that endpoint but does not replace assay-based confirmation
+        before advancing a candidate.
+      </p>
+      <p class="muted">
+        Model outputs are probabilistic estimates from machine learning classifiers and
+        carry inherent uncertainty. Use alongside, not in place of, standard experimental
+        toxicology workflows.
+      </p>
+    </div>
+  {% endif %}
+
+{% endblock %}

@@ -6,7 +6,36 @@ drive.mount('/content/drive')
 %cd "/content/drive/.shortcut-targets-by-id/1J41KUs-iq0gZzzOE4WVU3dRAczQMJ8O0/Toxicology"
 !pwd
 !ls -lh
+
+
+
+
 ```
+
+# Environment setup in google
+
+
+Cell 1 - get conda (bypass the 3.12 check):
+
+Python
+!pip install -q condacolab
+import condacolab
+condacolab._check_python = lambda: None
+condacolab.install()
+# it WILL restart - wait for it
+Cell 2 - after restart - create a py310 env with RDKit:
+
+Python
+!mamba create -n py310 python=3.10 rdkit pandas pyarrow tqdm -c conda-forge -y -q
+!mamba run -n py310 python -c "from rdkit import Chem; print('rdkit', Chem.rdBase.rdkitVersion)"
+Cell 3 - run your script USING that env's python, not Colab's:
+
+Python
+import os
+os.chdir("/content/drive/MyDrive/Toxicology")
+
+# use the py310 python binary explicitly
+!mamba run -n py310 python prepare_conformers.py
 
 ### 2. Setup Pythons (only needed once per new VM, skip if `/content/py310` exists)
 # Check

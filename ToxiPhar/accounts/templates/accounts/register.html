@@ -1,250 +1,161 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LogPhar – Register</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+{% extends "base.html" %}
+{% load static %}
 
-        body {
-            font-family: 'Segoe UI', sans-serif;
-            background: #f0f4f8;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 30px 0;
-        }
+{% block title %}ToxiPhar – Register{% endblock %}
 
-        .card {
-            background: white;
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            width: 100%;
-            max-width: 520px;
-        }
+{% block extra_css %}
+<style>
+  .register-card{
+    max-width:560px;
+    margin:0 auto;
+  }
+  .logo-block{
+    text-align:center;
+    margin-bottom:var(--gap);
+  }
+  .logo-block h1{
+    margin-bottom:2px;
+  }
+  .section-title{
+    font-family:var(--font-mono);
+    font-size:0.78rem;
+    font-weight:600;
+    color:var(--muted);
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+    margin:24px 0 12px;
+    padding-bottom:6px;
+    border-bottom:1px solid var(--line);
+  }
+  .section-title:first-of-type{ margin-top:0; }
+  .row{
+    display:flex;
+    flex-direction:column;
+    gap:0;
+  }
+  @media (min-width:600px){
+    .row{
+      flex-direction:row;
+      gap:var(--gap);
+    }
+    .row .field-group{ flex:1; }
+  }
+  .form-errors{
+    background:rgba(242,104,91,0.1);
+    border:1px solid var(--danger);
+    color:var(--danger);
+    padding:10px 14px;
+    border-radius:var(--radius-sm);
+    font-size:0.85rem;
+    margin-bottom:var(--gap);
+  }
+  .form-errors p{ margin:0 0 4px; color:var(--danger); }
+  .form-errors p:last-child{ margin-bottom:0; }
+  .footer-links{
+    text-align:center;
+    margin-top:var(--gap);
+    font-size:0.9rem;
+    color:var(--muted);
+  }
+  .footer-links a{
+    color:var(--safe);
+    font-weight:600;
+    text-decoration:none;
+  }
+  .footer-links a:hover{ text-decoration:underline; }
+  .secondary-link{
+    display:block;
+    margin-top:10px;
+    font-size:0.8rem;
+  }
+</style>
+{% endblock %}
 
-        .logo {
-            text-align: center;
-            margin-bottom: 25px;
-        }
+{% block content %}
+<div class="card register-card">
+  <div class="logo-block">
+    <h1>Toxi<span style="color:var(--safe)">Phar</span></h1>
+    <p class="muted">Register your pharmacy</p>
+  </div>
 
-        .logo h1 {
-            color: #1a6b3c;
-            font-size: 26px;
-        }
+  <form method="POST" novalidate>
+    {% csrf_token %}
 
-        .logo p {
-            color: #888;
-            font-size: 13px;
-            margin-top: 4px;
-        }
+    {% if form.errors %}
+      <div class="form-errors">
+        {% for field in form %}
+          {% for error in field.errors %}
+            <p><strong>{{ field.label }}:</strong> {{ error }}</p>
+          {% endfor %}
+        {% endfor %}
+        {% for error in form.non_field_errors %}
+          <p>{{ error }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
 
-        .section-title {
-            font-size: 13px;
-            font-weight: 700;
-            color: #1a6b3c;
-            text-transform: uppercase;
-            margin: 20px 0 12px;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 6px;
-        }
-
-        .row {
-            display: flex;
-            gap: 12px;
-        }
-
-        .form-group {
-            margin-bottom: 14px;
-            flex: 1;
-        }
-
-        label {
-            display: block;
-            font-size: 13px;
-            font-weight: 600;
-            color: #444;
-            margin-bottom: 5px;
-        }
-
-        input {
-            width: 100%;
-            padding: 10px 14px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            font-size: 14px;
-            outline: none;
-        }
-
-        input:focus { border-color: #1a6b3c; }
-
-        .btn {
-            width: 100%;
-            padding: 12px;
-            background: #1a6b3c;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 15px;
-            font-weight: 600;
-            cursor: pointer;
-            margin-top: 12px;
-        }
-
-        .btn:hover { background: #155c33; }
-
-        .errors {
-            background: #fff0f0;
-            border: 1px solid #ffcccc;
-            color: #cc0000;
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 12px;
-            margin-bottom: 10px;
-        }
-
-        .footer {
-            text-align: center;
-            margin-top: 18px;
-            font-size: 13px;
-            color: #888;
-        }
-
-        .footer a {
-            color: #1a6b3c;
-            font-weight: 600;
-            text-decoration: none;
-        }
-
-        /* Responsive adjustments for small screens */
-        @media (max-width: 600px) {
-            body { padding: 20px 0; }
-            .card { padding: 24px 20px; }
-        }
-
-        @media (max-width: 480px) {
-            .row { flex-direction: column; gap: 0; }
-        }
-    </style>
-</head>
-<body>
-    <div class="card">
-        <div class="logo">
-            <h1>💊 LogPhar</h1>
-            <p>Register Your Pharmacy</p>
-        </div>
-
-        <form method="POST">
-            {% csrf_token %}
-
-           
-            {% if form.errors %}
-            <div class="errors">
-                {% for field in form %}
-                    {% for error in field.errors %}
-                        <p><strong>{{ field.label }}:</strong> {{ error }}</p>
-                    {% endfor %}
-                {% endfor %}
-                {% for error in form.non_field_errors %}
-                    <p>{{ error }}</p>
-                {% endfor %}
-            </div>
-            {% endif %}
-
-            <div class="section-title">Personal Information</div>
-            <div class="row">
-                <div class="form-group">
-                    <label>First Name</label>
-                    {{ form.first_name }}
-                </div>
-                <div class="form-group">
-                    <label>Last Name</label>
-                    {{ form.last_name }}
-                </div>
-            </div>
-            <div class="form-group">
-                <label>Email Address</label>
-                {{ form.email }}
-            </div>
-            <div class="form-group">
-                <label>Phone Number</label>
-                {{ form.phone_number }}
-            </div>
-
-            <div class="section-title">Pharmacy Information</div>
-            <div class="form-group">
-                <label>Pharmacy Name</label>
-                {{ form.pharmacy_name }}
-            </div>
-            <div class="form-group">
-                <label>NPC Number (License)</label>
-                {{ form.npc_number }}
-            </div>
-
-            <div class="section-title">Location</div>
-            <div class="form-group">
-                <label>Country</label>
-                {{ form.country }}
-            </div>
-            <div class="row">
-                <div class="form-group">
-                    <label>District</label>
-                    {{ form.district }}
-                </div>
-                <div class="form-group">
-                    <label>Sector</label>
-                    {{ form.sector }}
-                </div>
-            </div>
-
-            <div class="section-title">Log in Credentials</div>
-
-            <div class="form-group">
-                <label>Username (auto-generated from Pharmacy Name)</label>
-                <input type="text" id="usernamePreview" readonly>
-                {{ form.username }}
-            </div>
-            <div class="form-group">
-                <label>Password</label>
-                {{ form.password1 }}
-            </div>
-            <div class="form-group">
-                <label>Confirm Password</label>
-                {{ form.password2 }}
-            </div>
-
-            <button type="submit" class="btn">Create Account</button>
-        </form>
-
-        <div class="footer">
-            Already have an account? <a href="{% url 'login' %}">Log In</a> 
-            <br> <br>
-            <a href="{% url 'web:home' %}" style="color:#1a6b3c; font-weight:600; text-decoration:none; font-size:13px;">Learn more about LogPhar</a>
-        </div>
+    <div class="section-title">Personal information</div>
+    <div class="row">
+      <div class="field-group">
+        <label for="{{ form.first_name.id_for_label }}">First name</label>
+        {{ form.first_name }}
+      </div>
+      <div class="field-group">
+        <label for="{{ form.last_name.id_for_label }}">Last name</label>
+        {{ form.last_name }}
+      </div>
+    </div>
+    <div class="field-group">
+      <label for="{{ form.email.id_for_label }}">Email address</label>
+      {{ form.email }}
+    </div>
+    <div class="field-group">
+      <label for="{{ form.phone_number.id_for_label }}">Phone number</label>
+      {{ form.phone_number }}
     </div>
 
- <script>
-document.addEventListener("DOMContentLoaded", function () {
-    const pharmacy = document.getElementById("id_pharmacy_name");
-    const hiddenUsername = document.getElementById("id_username");
-    const preview = document.getElementById("usernamePreview");
+    <div class="section-title">Institution information</div>
+    <div class="field-group">
+      <label for="{{ form.institution.id_for_label }}">Institution</label>
+      {{ form.institution }}
+    </div>
 
-    function sanitizeUsername(value) {
-        return value
-            .replace(/[^a-zA-Z0-9]+/g, '_')   // replace anything not a letter/number with _
-            .replace(/^_+|_+$/g, '')          // trim leading/trailing underscores
-            .toLowerCase();
-    }
+    <div class="section-title">Location</div>
+    <div class="field-group">
+      <label for="{{ form.country.id_for_label }}">Country</label>
+      {{ form.country }}
+    </div>
+    <div class="row">
+      <div class="field-group">
+        <label for="{{ form.district.id_for_label }}">District</label>
+        {{ form.district }}
+      </div>
+      <div class="field-group">
+        <label for="{{ form.sector.id_for_label }}">Sector</label>
+        {{ form.sector }}
+      </div>
+    </div>
 
-    pharmacy.addEventListener("input", function () {
-        const clean = sanitizeUsername(pharmacy.value);
-        hiddenUsername.value = clean;
-        preview.value = clean;
-    });
-});
-</script>
-</body>
-</html>
+    <div class="section-title">Log in credentials</div>
+    <div class="field-group">
+      <label for="{{ form.username.id_for_label }}">Username</label>
+      {{ form.username }}
+    </div>
+    <div class="field-group">
+      <label for="{{ form.password1.id_for_label }}">Password</label>
+      {{ form.password1 }}
+    </div>
+    <div class="field-group">
+      <label for="{{ form.password2.id_for_label }}">Confirm password</label>
+      {{ form.password2 }}
+    </div>
+
+    <button type="submit" class="btn btn-primary">Create account</button>
+  </form>
+
+  <div class="footer-links">
+    Already have an account? <a href="{% url 'login' %}">Log in</a>
+    <a href="{% url 'web:home' %}" class="secondary-link">Learn more about ToxiPhar</a>
+  </div>
+</div>
+{% endblock %}

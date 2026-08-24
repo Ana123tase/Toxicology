@@ -1,6 +1,6 @@
 from django.urls import path
 from django.shortcuts import render
-from .views import home, predict_view
+from .views import home, predict_view, report_view
 
 app_name = "web"
 
@@ -13,6 +13,5 @@ def register_placeholder(request):
 urlpatterns = [
     path("", home, name="home"),
     path("predict/", predict_view, name="predict"),
-    path("login/", login_placeholder, name="login"),
-    path("register/", register_placeholder, name="register"),
+    path("report/", report_view, name="report"),
 ]

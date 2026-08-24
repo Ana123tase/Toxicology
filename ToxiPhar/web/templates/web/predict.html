@@ -1,115 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}ToxiPhar — Predict{% endblock %}
+
+{% block extra_css %}
+<style>
+  .input-mode-toggle{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    margin-bottom:var(--gap);
+  }
+  .input-mode-toggle label{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    color:var(--paper);
+    font-size:0.9rem;
+    cursor:pointer;
+  }
+  #ketcher-frame{
+    width:100%;
+    height:420px;
+    border:1px solid var(--line);
+    border-radius:var(--radius-sm);
+    background:#fff; /* Ketcher's own UI expects a light canvas */
+  }
+  .fallback-box{ display:none; }
+  .fallback-box.active{ display:block; }
+</style>
+{% endblock %}
+
+{% block content %}
 {% load static %}
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>ToxiPhar — ADMET Toxicity Prediction</title>
-    <style>
-        body { font-family: sans-serif; max-width: 900px; margin: 40px auto; }
-        #ketcher-frame { width: 100%; height: 500px; border: 1px solid #ccc; }
-        .input-mode-toggle { margin: 16px 0; }
-        .fallback-box { display: none; margin: 16px 0; padding: 12px; background: #f5f5f5; }
-        .fallback-box.active { display: block; }
-        table { border-collapse: collapse; margin-top: 16px; }
-        th, td { border: 1px solid #ccc; padding: 6px 12px; }
-        .error { color: #b00020; }
-        .note { font-size: 0.85em; color: #666; }
-    </style>
-</head>
-<body>
-    <h1>ToxiPhar ADMET Prediction</h1>
-    <p>Draw the molecule's structure for the most reliable prediction (captures stereochemistry, conformers, and full connectivity). If you don't have a drawing available, you can paste a SMILES string instead.</p>
 
-    <form method="post" action="{% url 'predict' %}" id="predict-form">
-        {% csrf_token %}
+  <h1>Toxicity screen</h1>
+  <p class="muted">
+    Draw the molecule's structure for the most reliable prediction (captures stereochemistry,
+    conformers, and full connectivity). If you don't have a drawing available, you can paste a
+    SMILES string instead.
+  </p>
 
-        <div class="input-mode-toggle">
-            <label><input type="radio" name="input_mode" value="draw" checked onclick="setMode('draw')"> Draw structure (recommended)</label>
-            <label><input type="radio" name="input_mode" value="smiles" onclick="setMode('smiles')"> Paste SMILES</label>
-        </div>
+  <form method="post" action="{% url 'web:predict' %}" id="predict-form" class="card">
+    {% csrf_token %}
 
-        <div id="draw-box">
-            <iframe id="ketcher-frame" src="{% static 'ketcher/index.html' %}"></iframe>
-        </div>
+    <div class="input-mode-toggle">
+      <label>
+        <input type="radio" name="input_mode" value="draw" checked onclick="setMode('draw')">
+        Draw structure (recommended)
+      </label>
+      <label>
+        <input type="radio" name="input_mode" value="smiles" onclick="setMode('smiles')">
+        Paste SMILES
+      </label>
+    </div>
 
-        <div id="smiles-box" class="fallback-box">
-            <label for="smiles_manual">SMILES:</label>
-            <input type="text" id="smiles_manual" placeholder="CC(=O)Oc1ccccc1C(=O)O" size="60">
-            <p class="note">
-                A bare molecular formula (e.g. C9H8O4) is not accepted here — it doesn't specify a
-                unique structure, since many different molecules can share the same formula. Prediction
-                requires one exact structure, provided either by drawing it or by SMILES.
-            </p>
-        </div>
+    <div id="draw-box">
+      <iframe id="ketcher-frame" src="{% static 'ketcher/index.html' %}"></iframe>
+    </div>
 
-        <input type="hidden" name="smiles" id="smiles_final">
-        <br>
-        <button type="submit" onclick="return prepareSubmit()">Predict</button>
-    </form>
+    <div id="smiles-box" class="fallback-box field-group">
+      <label for="smiles_manual">SMILES</label>
+      <input type="text" id="smiles_manual" class="mono" placeholder="CC(=O)Oc1ccccc1C(=O)O">
+      <p class="muted" style="font-size:0.8rem;">
+        A bare molecular formula (e.g. C9H8O4) is not accepted here — it doesn't specify a
+        unique structure, since many different molecules can share the same formula. Prediction
+        requires one exact structure, provided either by drawing it or by SMILES.
+      </p>
+    </div>
 
-    {% if error %}
-        <p class="error">Error: {{ error }}</p>
-    {% endif %}
+    <input type="hidden" name="smiles" id="smiles_final">
+    <button type="submit" class="btn btn-primary" onclick="return prepareSubmit()">Predict</button>
+  </form>
 
-    {% if result %}
-        <h2>Results for {{ result.smiles_cleaned }}</h2>
-        <table>
-            <tr><th>Endpoint</th><th>Probability</th><th>Predicted class</th></tr>
-            {% for endpoint, data in result.predictions.items %}
-            <tr>
-                <td>{{ endpoint }}</td>
-                <td>{{ data.probability }}</td>
-                <td>{{ data.predicted_class }}</td>
-            </tr>
-            {% endfor %}
-        </table>
-        <p><a href="/reports/download/?smiles={{ result.smiles_cleaned }}">Download PDF report</a></p>
-    {% endif %}
+  {% if error %}
+    <ul class="messages"><li class="error">{{ error }}</li></ul>
+  {% endif %}
 
-    <script>
-        function setMode(mode) {
-            document.getElementById('draw-box').style.display = (mode === 'draw') ? 'block' : 'none';
-            document.getElementById('smiles-box').classList.toggle('active', mode === 'smiles');
-        }
+{% endblock %}
 
-        function prepareSubmit() {
-            const mode = document.querySelector('input[name="input_mode"]:checked').value;
-            const finalField = document.getElementById('smiles_final');
+{% block extra_js %}
+<script>
+  function setMode(mode) {
+    document.getElementById('draw-box').style.display = (mode === 'draw') ? 'block' : 'none';
+    document.getElementById('smiles-box').classList.toggle('active', mode === 'smiles');
+  }
 
-            if (mode === 'smiles') {
-                const manual = document.getElementById('smiles_manual').value.trim();
-                if (!manual) {
-                    alert('Please enter a SMILES string.');
-                    return false;
-                }
-                finalField.value = manual;
-                return true;
-            }
+  function prepareSubmit() {
+    const mode = document.querySelector('input[name="input_mode"]:checked').value;
+    const finalField = document.getElementById('smiles_final');
 
-            // Draw mode — pull SMILES out of the Ketcher iframe via its JS API.
-            const frame = document.getElementById('ketcher-frame');
-            const ketcherWin = frame.contentWindow;
+    if (mode === 'smiles') {
+      const manual = document.getElementById('smiles_manual').value.trim();
+      if (!manual) {
+        alert('Please enter a SMILES string.');
+        return false;
+      }
+      finalField.value = manual;
+      return true;
+    }
 
-            if (!ketcherWin || !ketcherWin.ketcher) {
-                alert('Structure editor is still loading — please wait a moment and try again.');
-                return false;
-            }
+    const frame = document.getElementById('ketcher-frame');
+    const ketcherWin = frame.contentWindow;
 
-            // Ketcher's getSmiles() is async (returns a Promise) — block
-            // form submission until we actually have the value.
-            ketcherWin.ketcher.getSmiles().then(function (smiles) {
-                if (!smiles) {
-                    alert('Please draw a structure before predicting.');
-                    return;
-                }
-                finalField.value = smiles;
-                document.getElementById('predict-form').submit();
-            }).catch(function (err) {
-                alert('Could not read the structure from the editor: ' + err);
-            });
+    if (!ketcherWin || !ketcherWin.ketcher) {
+      alert('Structure editor is still loading — please wait a moment and try again.');
+      return false;
+    }
 
-            return false; // always block the default submit; the .then() above re-submits manually
-        }
-    </script>
-</body>
-</html>
+    ketcherWin.ketcher.getSmiles().then(function (smiles) {
+      if (!smiles) {
+        alert('Please draw a structure before predicting.');
+        return;
+      }
+      finalField.value = smiles;
+      document.getElementById('predict-form').submit();
+    }).catch(function (err) {
+      alert('Could not read the structure from the editor: ' + err);
+    });
+
+    return false;
+  }
+</script>
+{% endblock %}

@@ -1,124 +1,98 @@
-<!-- Golden%123 boticario_pharmacy This is a password used in Testing -->
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LogPhar – Delete Account</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', sans-serif; background: #f0f4f8; }
+{% extends "base.html" %}
+{% load static %}
 
-        nav {
-            background: #1a6b3c; color: white; padding: 16px 30px;
-            display: flex; justify-content: space-between; align-items: center;
-            flex-wrap: wrap; gap: 10px;
-        }
-        nav h1 { font-size: 20px; }
-        nav a {
-            color: white; text-decoration: none; background: rgba(255,255,255,0.15);
-            padding: 8px 16px; border-radius: 6px; font-size: 14px;
-        }
-        nav a:hover { background: rgba(255,255,255,0.25); }
+{% block title %}ToxiPhar – Delete account{% endblock %}
 
-        .container { display: flex; justify-content: center; padding: 40px 20px; }
+{% block extra_css %}
+<style>
+  .delete-card{
+    max-width:460px;
+    margin:0 auto;
+  }
+  .warning-icon{
+    font-size:2.2rem;
+    text-align:center;
+    margin-bottom:8px;
+  }
+  .delete-card h2{
+    color:var(--danger);
+    text-align:center;
+  }
+  .warning-text{
+    background:rgba(242,104,91,0.1);
+    border:1px solid var(--danger);
+    border-radius:var(--radius-sm);
+    padding:14px 16px;
+    font-size:0.85rem;
+    color:var(--danger);
+    line-height:1.6;
+    margin-bottom:var(--gap);
+  }
+  .warning-text ul{
+    margin:8px 0 0 18px;
+    padding:0;
+  }
+  .btn-row{
+    display:flex;
+    gap:10px;
+    margin-top:6px;
+  }
+  .btn-row .btn{ flex:1; }
+  .btn-delete{
+    background:var(--danger);
+    border-color:var(--danger);
+    color:var(--paper);
+    font-weight:600;
+  }
+  .btn-delete:hover{ filter:brightness(1.1); }
+  .form-errors{
+    background:rgba(242,104,91,0.1);
+    border:1px solid var(--danger);
+    color:var(--danger);
+    padding:10px 14px;
+    border-radius:var(--radius-sm);
+    font-size:0.85rem;
+    margin-bottom:var(--gap);
+  }
+  @media (max-width:400px){
+    .btn-row{ flex-direction:column; }
+  }
+</style>
+{% endblock %}
 
-        .card {
-            background: white; padding: 40px; border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.06); width: 100%; max-width: 460px;
-        }
+{% block content %}
+<div class="card delete-card">
+  <div class="warning-icon">⚠️</div>
+  <h2>Delete your account</h2>
 
-        .warning-icon { font-size: 40px; text-align: center; margin-bottom: 10px; }
-        .card h2 { color: #cc0000; margin-bottom: 12px; text-align: center; }
+  {% if error %}
+    <div class="form-errors">{{ error }}</div>
+  {% endif %}
 
-        .warning-text {
-            background: #fff0f0;
-            border: 1px solid #ffcccc;
-            border-radius: 8px;
-            padding: 16px;
-            font-size: 13px;
-            color: #a30000;
-            line-height: 1.6;
-            margin-bottom: 20px;
-        }
+  <div class="warning-text">
+    This action is <strong>permanent and cannot be undone</strong>. Deleting your account will erase:
+    <ul>
+      <li>Your pharmacist profile</li>
+      <li>All your products and inventory</li>
+      <li>All your sales history</li>
+    </ul>
+  </div>
 
-        .warning-text ul { margin: 8px 0 0 18px; }
-
-        .form-group { margin-bottom: 16px; }
-        label { display: block; font-size: 13px; font-weight: 600; color: #444; margin-bottom: 5px; }
-        input {
-            width: 100%; padding: 10px 14px; border: 1px solid #ddd;
-            border-radius: 8px; font-size: 14px; outline: none;
-        }
-
-        .btn-row { display: flex; gap: 10px; margin-top: 16px; }
-        .btn {
-            flex: 1; padding: 12px; border: none; border-radius: 8px;
-            font-size: 14px; font-weight: 600; cursor: pointer; text-align: center; text-decoration: none;
-        }
-        .btn-delete { background: #cc0000; color: white; }
-        .btn-delete:hover { background: #a30000; }
-        .btn-cancel { background: #eee; color: #444; }
-        .btn-cancel:hover { background: #ddd; }
-
-        .errors {
-            background: #fff0f0; border: 1px solid #ffcccc; color: #cc0000;
-            padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px;
-        }
-
-        /* Responsive adjustments for tablets and phones */
-        @media (max-width: 768px) {
-            nav { padding: 14px 16px; }
-            .container { padding: 24px 16px; }
-            .card { padding: 28px 20px; }
-        }
-
-        @media (max-width: 400px) {
-            .btn-row { flex-direction: column; }
-        }
-    </style>
-</head>
-<body>
-    <nav>
-        <h1>💊 LogPhar</h1>
-        <a href="{% url 'dashboard' %}">← Back to Dashboard</a>
-    </nav>
-
-    <div class="container">
-        <div class="card">
-            <div class="warning-icon">⚠️</div>
-            <h2>Delete Your Account</h2>
-
-            {% if error %}
-                <div class="errors">{{ error }}</div>
-            {% endif %}
-
-            <div class="warning-text">
-                This action is <strong>permanent and cannot be undone</strong>. Deleting your account will erase:
-                <ul>
-                    <li>Your pharmacist profile</li>
-                    <li>All your products and inventory</li>
-                    <li>All your sales history</li>
-                </ul>
-            </div>
-
-            <form method="POST">
-                {% csrf_token %}
-                <div class="form-group">
-                    <label>NPC Number</label>
-                    <input type="password" name="npc_number" placeholder="Enter your NPC license number" required>
-                </div>
-                <div class="form-group">
-                    <label>Password</label>
-                    <input type="password" name="password" placeholder="Enter your password" required>
-                </div>
-
-                <div class="btn-row">
-                    <a href="{% url 'dashboard' %}" class="btn btn-cancel">Cancel</a>
-                    <button type="submit" class="btn btn-delete">Delete My Account Permanently</button>
-                </div>
-            </form>
-        </div>
+  <form method="POST">
+    {% csrf_token %}
+    <div class="field-group">
+      <label for="username_confirm">Confirm your username</label>
+      <input type="text" name="username_confirm" id="username_confirm" placeholder="Enter your username" required>
     </div>
-</body>
-</html>
+    <div class="field-group">
+      <label for="password">Password</label>
+      <input type="password" name="password" id="password" placeholder="Enter your password" required>
+    </div>
+
+    <div class="btn-row">
+      <a href="{% url 'dashboard' %}" class="btn btn-cancel">Cancel</a>
+      <button type="submit" class="btn btn-delete">Delete my account permanently</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

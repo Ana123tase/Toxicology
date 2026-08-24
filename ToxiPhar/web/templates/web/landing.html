@@ -89,9 +89,9 @@ section{padding:84px 0}
   </ul>
   <div class="nav-actions">
     <!-- LINK TO YOUR EXISTING LOGIN PAGE -->
-    <a href="{% url 'web:login' %}" class="btn btn-outline">Log In</a>
+    <a href="{% url 'login' %}" class="btn btn-outline">Log In</a>
     <!-- LINK TO YOUR EXISTING REGISTER PAGE -->
-    <a href="{% url 'web:register' %}" class="btn btn-primary">Register</a>
+    <a href="{% url 'register' %}" class="btn btn-primary">Register</a>
   </div>
 </div>
 </header>
@@ -104,8 +104,8 @@ section{padding:84px 0}
     <p><strong>ToxiPhar</strong> is a professional AI system employing multiple Machine Learning algorithms to predict drug toxicity. Developed by a Pharmacy student, tailored specifically for university institutions and pharmaceutical industries to accelerate safe drug development.</p>
     <div class="hero-cta">
       <!-- Update these hrefs to your actual pages -->
-      <a href="{% url 'web:register' %}" class="btn btn-primary">Register — 1 Month Free Access </a>
-      <a href="{% url 'web:login' %}" class="btn btn-outline">Log In to Platform</a>
+      <a href="{% url 'register' %}" class="btn btn-primary">Register — 1 Month Free Access </a>
+      <a href="{% url 'login' %}" class="btn btn-outline">Log In to Platform</a>
     </div>
     <div style="margin-top:26px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--gray-600)">
       <span>✓ No credit card required</span>
@@ -157,12 +157,12 @@ section{padding:84px 0}
 <div class="container">
   <div class="section-head"><h2>Built for Universities & Industries</h2><p>Our primary customers — designed to fit your workflow and budget.</p></div>
   <div class="grid-2">
-    <div class="card"><div class="card-icon">🎓</div><h3>For University Institutions</h3><p>Transform how you teach toxicology and drug development.</p><ul class="check"><li>Integrate into Pharmacology & Toxicology curriculum</li><li>Academic bulk licenses for departments</li><li>Perfect for student dissertations and research</li><li>Faculty training and onboarding support</li></ul><br><a href="{% url 'web:register' %}" class="btn btn-outline" style="padding:10px 18px;font-size:13px">Register University →</a></div>
-    <div class="card"><div class="card-icon">🏭</div><h3>For Pharmaceutical Industries</h3><p>De-risk early and cut pre-clinical development costs by months.</p><ul class="check"><li>Screen thousands of lead compounds in seconds</li><li>Reduce late-stage attrition and animal testing</li><li>API access for seamless R&D integration</li><li>Regulatory-ready documentation</li></ul><br><a href="{% url 'web:register' %}" class="btn btn-outline" style="padding:10px 18px;font-size:13px">Register Company →</a></div>
+    <div class="card"><div class="card-icon">🎓</div><h3>For University Institutions</h3><p>Transform how you teach toxicology and drug development.</p><ul class="check"><li>Integrate into Pharmacology & Toxicology curriculum</li><li>Academic bulk licenses for departments</li><li>Perfect for student dissertations and research</li><li>Faculty training and onboarding support</li></ul><br><a href="{% url 'register' %}" class="btn btn-outline" style="padding:10px 18px;font-size:13px">Register University →</a></div>
+    <div class="card"><div class="card-icon">🏭</div><h3>For Pharmaceutical Industries</h3><p>De-risk early and cut pre-clinical development costs by months.</p><ul class="check"><li>Screen thousands of lead compounds in seconds</li><li>Reduce late-stage attrition and animal testing</li><li>API access for seamless R&D integration</li><li>Regulatory-ready documentation</li></ul><br><a href="{% url 'register' %}" class="btn btn-outline" style="padding:10px 18px;font-size:13px">Register Company →</a></div>
   </div>
   <div class="offer-banner" style="margin-top:32px">
     <div><h3>Start Free — 1 Month Full Access After Login</h3><p>Once you log in, you have a month of free access to all premium features. No credit card required. Ideal for university trials and industry pilots.</p></div>
-    <a href="{% url 'web:register' %}" class="btn" style="background:#fff;color:var(--green-900);white-space:nowrap;position:relative">Claim Free Access →</a>
+    <a href="{% url 'register' %}" class="btn" style="background:#fff;color:var(--green-900);white-space:nowrap;position:relative">Claim Free Access →</a>
   </div>
 </div>
 </section>
@@ -190,8 +190,8 @@ section{padding:84px 0}
       <p>An AI system employing various ML algorithms to predict drug toxicity. Tool made by a Pharmacy student at University of Rwanda, made specifically for Pharmacy practitioners, university institutions and pharmaceutical industries.</p>
       <p style="margin-top:12px"><span style="color:#6ee7b7">● System Online</span> • AI Models Active • Secure & Confidential</p>
       <div style="margin-top:18px;display:flex;gap:10px">
-        <a href="{% url 'web:register' %}" class="btn btn-primary" style="padding:10px 20px;font-size:13px">Register</a>
-        <a href="{% url 'web:login' %}" class="btn" style="padding:10px 20px;font-size:13px;background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.18)">Log In</a>
+        <a href="{% url 'register' %}" class="btn btn-primary" style="padding:10px 20px;font-size:13px">Register</a>
+        <a href="{% url 'login' %}" class="btn" style="padding:10px 20px;font-size:13px;background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.18)">Log In</a>
       </div>
     </div>
     <div>

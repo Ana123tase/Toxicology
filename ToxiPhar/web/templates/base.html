@@ -1,0 +1,460 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>{% block title %}ToxiPhar{% endblock %}</title>
+
+<style>
+  :root{
+    --ink:#10151A;
+    --panel:#171F26;
+    --panel-raised:#1D2731;
+    --line:#2A343D;
+    --paper:#E8EDEF;
+    --muted:#8DA0AA;
+    --safe:#4FD1A5;
+    --warn:#F2B84B;
+    --danger:#F2685B;
+
+    /* System font stacks — no external requests, renders instantly, native feel per OS */
+    --font-display: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: ui-monospace, 'SFMono-Regular', 'Menlo', 'Consolas', 'Liberation Mono', monospace;
+
+    --radius-sm:6px;
+    --radius-md:10px;
+    --gap:16px;
+    --header-h:56px;
+
+    color-scheme: dark;
+  }
+
+  *,*::before,*::after{ box-sizing:border-box; }
+
+  html{ -webkit-text-size-adjust:100%; }
+
+  body{
+    margin:0;
+    min-height:100dvh;
+    background:var(--ink);
+    color:var(--paper);
+    font-family:var(--font-body);
+    font-size:16px;
+    line-height:1.5;
+    display:flex;
+    flex-direction:column;
+  }
+
+  h1,h2,h3,h4{
+    font-family:var(--font-display);
+    font-weight:600;
+    line-height:1.2;
+    margin:0 0 0.5em;
+    letter-spacing:-0.01em;
+  }
+  h1{ font-size:1.6rem; }
+  h2{ font-size:1.25rem; }
+  h3{ font-size:1.05rem; }
+
+  p{ margin:0 0 1em; color:var(--paper); }
+  small,.muted{ color:var(--muted); }
+
+  a{ color:var(--paper); text-decoration-color:var(--muted); }
+  a:hover{ text-decoration-color:var(--paper); }
+
+  code, .mono, .data{
+    font-family:var(--font-mono);
+    font-size:0.9em;
+    word-break:break-all;
+  }
+
+  :focus-visible{
+    outline:2px solid var(--warn);
+    outline-offset:2px;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:0.01ms !important; transition-duration:0.01ms !important; }
+  }
+
+  /* ---------- Layout shell ---------- */
+
+  .site-header{
+    position:sticky;
+    top:0;
+    z-index:50;
+    background:var(--panel);
+    border-bottom:1px solid var(--line);
+  }
+
+  .header-bar{
+    height:var(--header-h);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:0 var(--gap);
+    max-width:1100px;
+    margin:0 auto;
+  }
+
+  .wordmark{
+    font-family:var(--font-display);
+    font-weight:700;
+    font-size:1.05rem;
+    color:var(--paper);
+    text-decoration:none;
+    letter-spacing:-0.02em;
+    display:flex;
+    align-items:baseline;
+    gap:2px;
+  }
+  .wordmark span{ color:var(--safe); }
+
+  /* Signature: graduated risk tick-bar under the header, present on every page */
+  .risk-rule{
+    height:3px;
+    width:100%;
+    background:linear-gradient(90deg, var(--safe) 0%, var(--safe) 30%, var(--warn) 55%, var(--danger) 100%);
+  }
+
+  /* Mobile nav via checkbox toggle, no JS required */
+  .nav-toggle{ display:none; }
+
+  .nav-toggle-label{
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    gap:4px;
+    width:32px;
+    height:32px;
+    cursor:pointer;
+  }
+  .nav-toggle-label span{
+    display:block;
+    height:2px;
+    background:var(--paper);
+    border-radius:2px;
+  }
+
+  .site-nav{
+    display:none;
+    flex-direction:column;
+    background:var(--panel);
+    border-bottom:1px solid var(--line);
+  }
+  .site-nav a{
+    padding:14px var(--gap);
+    border-top:1px solid var(--line);
+    text-decoration:none;
+    color:var(--paper);
+    font-size:0.95rem;
+  }
+  .site-nav a:hover{ background:var(--panel-raised); }
+
+  .nav-toggle:checked ~ .site-nav{ display:flex; }
+
+  /* Logout must be a POST form (Django's LogoutView rejects GET), styled to match nav links */
+  .site-nav form.logout-form{ margin:0; }
+  .site-nav .nav-link-btn{
+    display:block;
+    width:100%;
+    text-align:left;
+    background:none;
+    border:none;
+    border-top:1px solid var(--line);
+    padding:14px var(--gap);
+    font-family:var(--font-body);
+    font-size:0.95rem;
+    color:var(--paper);
+    cursor:pointer;
+  }
+  .site-nav .nav-link-btn:hover{ background:var(--panel-raised); }
+
+  /* Account dropdown — <details>/<summary>, no JS required */
+  .account-menu{ position:relative; }
+  .account-menu summary{
+    padding:14px var(--gap);
+    border-top:1px solid var(--line);
+    font-size:0.95rem;
+    color:var(--paper);
+    cursor:pointer;
+    list-style:none;
+  }
+  .account-menu summary::-webkit-details-marker{ display:none; }
+  .account-menu summary::after{
+    content:'▾';
+    margin-left:6px;
+    color:var(--muted);
+    font-size:0.75em;
+  }
+  .account-menu summary:hover{ background:var(--panel-raised); }
+  .account-menu-list{
+    display:flex;
+    flex-direction:column;
+    background:var(--panel-raised);
+  }
+  .account-menu-list a,
+  .account-menu-list .nav-link-btn{
+    padding:12px var(--gap) 12px calc(var(--gap) * 1.5);
+    border-top:1px solid var(--line);
+    font-size:0.9rem;
+    color:var(--paper);
+    text-decoration:none;
+  }
+  .account-menu-list a:hover,
+  .account-menu-list .nav-link-btn:hover{ background:var(--panel); }
+  .account-menu-list form.logout-form{ margin:0; }
+  .account-menu-list .nav-link-btn{
+    display:block;
+    width:100%;
+    text-align:left;
+    background:none;
+    border:none;
+    border-top:1px solid var(--line);
+    font-family:var(--font-body);
+    cursor:pointer;
+  }
+
+  main{
+    flex:1;
+    width:100%;
+    max-width:1100px;
+    margin:0 auto;
+    padding:var(--gap);
+  }
+
+  .site-footer{
+    border-top:1px solid var(--line);
+    padding:14px var(--gap);
+    text-align:center;
+  }
+  .site-footer p{
+    margin:0;
+    font-size:0.8rem;
+    color:var(--muted);
+    font-family:var(--font-mono);
+  }
+
+  /* ---------- Reusable components ---------- */
+
+  .card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:var(--radius-md);
+    padding:var(--gap);
+    margin-bottom:var(--gap);
+  }
+
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    font-family:var(--font-body);
+    font-weight:500;
+    font-size:0.95rem;
+    padding:12px 20px;
+    border-radius:var(--radius-sm);
+    border:1px solid var(--line);
+    background:var(--panel-raised);
+    color:var(--paper);
+    cursor:pointer;
+    text-decoration:none;
+    min-height:44px; /* thumb-friendly tap target */
+    width:100%;
+  }
+  .btn:hover{ border-color:var(--muted); }
+  .btn-primary{
+    background:var(--safe);
+    border-color:var(--safe);
+    color:var(--ink);
+    font-weight:600;
+  }
+  .btn-primary:hover{ filter:brightness(1.08); }
+
+  label{
+    display:block;
+    font-size:0.85rem;
+    color:var(--muted);
+    margin-bottom:6px;
+  }
+
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  textarea,
+  select{
+    width:100%;
+    background:var(--ink);
+    border:1px solid var(--line);
+    border-radius:var(--radius-sm);
+    color:var(--paper);
+    font-family:var(--font-mono);
+    font-size:1rem;
+    padding:12px;
+    margin-bottom:var(--gap);
+    min-height:44px;
+  }
+  input:focus, textarea:focus, select:focus{
+    border-color:var(--warn);
+  }
+
+  .field-group{ margin-bottom:var(--gap); }
+
+  /* Risk badges — reused by the reporting page for each endpoint result */
+  .badge{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    font-family:var(--font-mono);
+    font-size:0.8rem;
+    padding:4px 10px;
+    border-radius:999px;
+    border:1px solid var(--line);
+  }
+  .badge-safe{ color:var(--safe); border-color:var(--safe); }
+  .badge-warn{ color:var(--warn); border-color:var(--warn); }
+  .badge-danger{ color:var(--danger); border-color:var(--danger); }
+
+  /* Django messages framework */
+  .messages{ list-style:none; margin:0 0 var(--gap); padding:0; }
+  .messages li{
+    padding:12px var(--gap);
+    border-radius:var(--radius-sm);
+    border:1px solid var(--line);
+    margin-bottom:8px;
+    font-size:0.9rem;
+  }
+  .messages .success{ border-color:var(--safe); }
+  .messages .error{ border-color:var(--danger); }
+  .messages .warning{ border-color:var(--warn); }
+
+  table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:0.85rem;
+  }
+  th,td{
+    text-align:left;
+    padding:10px;
+    border-bottom:1px solid var(--line);
+    white-space:nowrap;
+  }
+  .table-scroll{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+
+  /* ---------- Responsive breakpoints (mobile-first) ---------- */
+
+  @media (min-width: 768px){
+    .nav-toggle-label{ display:none; }
+    .site-nav{
+      display:flex !important;
+      flex-direction:row;
+      border-bottom:none;
+      background:transparent;
+      width:auto;
+    }
+    .site-nav a{
+      border-top:none;
+      padding:8px 14px;
+      font-size:0.9rem;
+    }
+    .site-nav .nav-link-btn{
+      border-top:none;
+      padding:8px 14px;
+      font-size:0.9rem;
+      width:auto;
+      text-align:center;
+    }
+    .account-menu summary{
+      border-top:none;
+      padding:8px 14px;
+    }
+    .account-menu-list{
+      position:absolute;
+      top:100%;
+      right:0;
+      min-width:180px;
+      border:1px solid var(--line);
+      border-radius:var(--radius-sm);
+      box-shadow:0 8px 24px rgba(0,0,0,0.3);
+      z-index:60;
+      margin-top:6px;
+    }
+    .account-menu-list a,
+    .account-menu-list .nav-link-btn{
+      border-top:none;
+      border-bottom:1px solid var(--line);
+      padding:10px 14px;
+    }
+    .account-menu-list a:last-child,
+    .account-menu-list form.logout-form:last-child .nav-link-btn{
+      border-bottom:none;
+    }
+    .btn{ width:auto; }
+    main{ padding:24px var(--gap); }
+    h1{ font-size:2rem; }
+  }
+
+  @media (min-width: 1024px){
+    main{ padding:32px 0; }
+  }
+</style>
+{% block extra_css %}{% endblock %}
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="header-bar">
+      <a href="{% url 'web:home' %}" class="wordmark">Toxi<span>Phar</span></a>
+
+      <input type="checkbox" id="nav-toggle" class="nav-toggle">
+      <label for="nav-toggle" class="nav-toggle-label" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </label>
+    </div>
+
+    <nav class="site-nav">
+      <a href="{% url 'web:home' %}">Predict</a>
+      <a href="{% url 'web:report' %}">Reports</a>
+      {% if user.is_authenticated %}
+        <details class="account-menu">
+          <summary>Account</summary>
+          <div class="account-menu-list">
+            <a href="{% url 'edit_profile' %}">Edit profile</a>
+            <a href="{% url 'password_change' %}">Change password</a>
+            <a href="{% url 'delete_account' %}">Delete account</a>
+            <form method="POST" action="{% url 'logout' %}" class="logout-form">
+              {% csrf_token %}
+              <button type="submit" class="nav-link-btn">Log out</button>
+            </form>
+          </div>
+        </details>
+      {% else %}
+        <a href="{% url 'login' %}">Log in</a>
+      {% endif %}
+    </nav>
+
+    <div class="risk-rule"></div>
+  </header>
+
+  <main>
+    {% if messages %}
+      <ul class="messages">
+        {% for message in messages %}
+          <li class="{{ message.tags }}">{{ message }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <p>ToxiPhar — production models · offline inference</p>
+  </footer>
+
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,155 +1,89 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LogPhar – Login</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+{% extends "base.html" %}
+{% load static %}
 
-        body {
-            font-family: 'Segoe UI', sans-serif;
-            background: #f0f4f8;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 20px;
-        }
+{% block title %}ToxiPhar – Log in{% endblock %}
 
-        .card {
-            background: white;
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            width: 100%;
-            max-width: 400px;
-        }
+{% block extra_css %}
+<style>
+  .login-card{
+    max-width:400px;
+    margin:0 auto;
+  }
+  .logo-block{
+    text-align:center;
+    margin-bottom:var(--gap);
+  }
+  .logo-block h1{
+    margin-bottom:2px;
+  }
+  .form-errors{
+    background:rgba(242,104,91,0.1);
+    border:1px solid var(--danger);
+    color:var(--danger);
+    padding:10px 14px;
+    border-radius:var(--radius-sm);
+    font-size:0.85rem;
+    margin-bottom:var(--gap);
+  }
+  .form-errors p{ margin:0; color:var(--danger); }
+  .footer-links{
+    text-align:center;
+    margin-top:var(--gap);
+    font-size:0.85rem;
+    color:var(--muted);
+  }
+  .footer-links a{
+    color:var(--safe);
+    font-weight:600;
+    text-decoration:none;
+  }
+  .footer-links a:hover{ text-decoration:underline; }
+  .footer-links p{
+    margin:8px 0 0;
+  }
+  .site-credit{
+    text-align:center;
+    margin-top:20px;
+    font-size:0.75rem;
+    color:var(--muted);
+  }
+</style>
+{% endblock %}
 
-        .logo {
-            text-align: center;
-            margin-bottom: 30px;
-        }
+{% block content %}
+<div class="card login-card">
+  <div class="logo-block">
+    <h1>Toxi<span style="color:var(--safe)">Phar</span></h1>
+    <p class="muted">Pharmacy management system</p>
+  </div>
 
-        .logo h1 {
-            color: #1a6b3c;
-            font-size: 28px;
-            font-weight: 700;
-        }
-
-        .logo p {
-            color: #888;
-            font-size: 13px;
-            margin-top: 4px;
-        }
-
-        .form-group {
-            margin-bottom: 18px;
-        }
-
-        label {
-            display: block;
-            font-size: 13px;
-            font-weight: 600;
-            color: #444;
-            margin-bottom: 6px;
-        }
-
-        input {
-            width: 100%;
-            padding: 10px 14px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            font-size: 14px;
-            outline: none;
-            transition: border 0.2s;
-        }
-
-        input:focus { border-color: #1a6b3c; }
-
-        .btn {
-            width: 100%;
-            padding: 12px;
-            background: #1a6b3c;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 15px;
-            font-weight: 600;
-            cursor: pointer;
-            margin-top: 8px;
-        }
-
-        .btn:hover { background: #155c33; }
-
-        .errors {
-            background: #fff0f0;
-            border: 1px solid #ffcccc;
-            color: #cc0000;
-            padding: 10px 14px;
-            border-radius: 8px;
-            font-size: 13px;
-            margin-bottom: 16px;
-        }
-
-        .footer {
-            text-align: center;
-            margin-top: 20px;
-            font-size: 13px;
-            color: #888;
-        }
-
-        /* Responsive adjustment for small phones */
-        @media (max-width: 420px) {
-            .card { padding: 28px 20px; }
-        }
-    </style>
-</head>
-<body>
-    <div class="card">
-        <div class="logo">
-            <h1>💊 LogPhar</h1>
-            <p>Pharmacy Management System</p>
-        </div>
-
-        {% if form.errors %}
-        <div class="errors">
-            Invalid username or password. Please try again.
-        </div>
-        {% endif %}
-
-        {% if messages %}
-            {% for message in messages %}
-                <div class="errors">{{ message }}</div>
-            {% endfor %}
-        {% endif %}
-
-        <form method="POST">
-            {% csrf_token %}
-            <div class="form-group">
-                <label for="username">Username</label>
-                <input type="text" name="username" id="username" placeholder="Enter your username" required>
-            </div>
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" name="password" id="password" placeholder="Enter your password" required>
-            </div>
-            <button type="submit" class="btn">Log In</button>
-
-            <div class="footer" style="margin-top: 10px;">
-            I you don't have an account, <a href="{% url 'register' %}" style="color:#1a6b3c; font-weight:600; text-decoration:none; font-size:13px;">REGISTER first!</a>
-            <br> <br>
-            <a href="{% url 'web:home' %}" style="color:#1a6b3c; font-weight:600; text-decoration:none; font-size:13px;">Learn more about the system</a>
-            <br> <br>
-            <a href="{% url 'password_reset' %}" style="color:#1a6b3c; font-weight:600; text-decoration:none; font-size:13px;">Forgot password?</a>
-
-            </div>
-        </form>
-
-        <div class="footer">
-            LogPhar &copy; 2026 · Secure Pharmacy Platform
-            <br>Developed by <br>Boti Technologies: anastasedukunda@gmail.com
-        </div>
+  {% if form.errors %}
+    <div class="form-errors">
+      <p>Invalid username or password. Please try again.</p>
     </div>
-</body>
-</html>
+  {% endif %}
+
+  <form method="POST">
+    {% csrf_token %}
+    <div class="field-group">
+      <label for="{{ form.username.id_for_label }}">Username</label>
+      {{ form.username }}
+    </div>
+    <div class="field-group">
+      <label for="{{ form.password.id_for_label }}">Password</label>
+      {{ form.password }}
+    </div>
+    <button type="submit" class="btn btn-primary">Log in</button>
+  </form>
+
+  <div class="footer-links">
+    <p>Don't have an account? <a href="{% url 'register' %}">Register first</a></p>
+    <p><a href="{% url 'web:home' %}">Learn more about the system</a></p>
+    <p><a href="{% url 'password_reset' %}">Forgot password?</a></p>
+  </div>
+</div>
+
+<div class="site-credit">
+  ToxiPhar &copy; 2026 · Secure pharmacy platform
+</div>
+{% endblock %}

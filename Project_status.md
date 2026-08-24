@@ -22,9 +22,9 @@ Teratogenicity — teratogenicity
 3. Add a Uni-Mol and make a cascade → hybrid fusion (`Uni-Mol.db` + `benchmark_p3.txt`)
 NB: Here all algorithms (CatBoost, D-MPNN AND Uni-Mol) must participate in all mechanisms (Ensemble, cascade and hybrid)
 N.B: At each level it checks if confidence is enough
-4. Confidence + applicability domain + explainability (API: prob, confidence, domain, neighbors, atom_map)
-5. Fast production API (<300ms) + load testing + PDF report + pricing page
-6. Web app
+4. Confidence + applicability domain + explainability (API: prob, confidence, domain, neighbors, atom_map): I am waiting for capital to get enough training computing resources
+5. Fast production API (<300ms) + load testing + PDF report + pricing page, development is to start now
+6. Web app: development start now
 
 ## Decisions locked across the phases
 - **Endpoint panel:** DILI, hERG, Ames, CYP3A4 and Teratogen (real ADMET panel, not arbitrary Tox21 endpoints — chosen for commercial relevance)
@@ -60,11 +60,13 @@ The important part is that no train/validation/test split was used for this fina
 
 
 - D-MPNN done but not tested coz my it will take my laptop a year of training
+- Uni-Mol done but not tested coz it will take my laptop a year of training, so I am waiting for capital to start training
 
 ## Where we are right now (Updated 2026-08-19)
 
 1.  500 unique check on CatBoost: done
 2. D-MPNN development with chemprop: now we are doing training but it is taking very long so I am going to continue development of Uni-Mol
+3. Waiting for enough power to start training
 
 
 
