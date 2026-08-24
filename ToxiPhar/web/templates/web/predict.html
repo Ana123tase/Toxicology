@@ -18,13 +18,148 @@
     font-size:0.9rem;
     cursor:pointer;
   }
-  #ketcher-frame{
-    width:100%;
-    height:420px;
+
+  #draw-box{
+    position:relative;
+    display:flex;
+    flex-direction:column;
     border:1px solid var(--line);
     border-radius:var(--radius-sm);
+    background:var(--paper);
+    overflow:hidden;
+    height:calc(100vh - 260px);
+    min-height:640px;
+  }
+  #draw-box.is-fullscreen{
+    position:fixed;
+    inset:0;
+    z-index:1000;
+    height:100vh;
+    min-height:0;
+    border:none;
+    border-radius:0;
+  }
+
+  /* Toolbar sits above the canvas so the resize control is a normal
+     in-flow button rather than something floating oddly on top of the
+     drawing surface. */
+  .draw-toolbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    padding:6px 8px;
+    border-bottom:1px solid var(--line);
+    flex-wrap:wrap;
+  }
+  .draw-toolbar-left{
+    display:flex;
+    gap:6px;
+    flex-wrap:wrap;
+  }
+  .draw-toolbar button{
+    font-size:0.8rem;
+    padding:4px 8px;
+  }
+
+  /* Deliberately left with plain/native button appearance — no custom
+     background, border, radius, or icon — per design request. */
+  #expand-editor-btn{
+    font-size:0.8rem;
+  }
+
+  #ketcher-frame{
+    width:100%;
+    flex:1 1 auto;
+    min-height:320px;
+    border:none;
     background:#fff; /* Ketcher's own UI expects a light canvas */
   }
+
+  #smiles-box{
+    padding:10px 12px;
+    border-top:1px solid var(--line);
+  }
+  .smiles-input-row{
+    display:flex;
+    gap:8px;
+  }
+  .smiles-input-row input{
+    flex:1;
+  }
+
+  .notice-box{
+    margin:0 12px 8px;
+    padding:8px 10px;
+    border:1px solid #d8a13a;
+    background:#fff8e6;
+    border-radius:4px;
+    font-size:0.85rem;
+    color:#5b4300;
+  }
+  .notice-box .fragment-option{
+    margin-top:6px;
+    display:flex;
+    gap:6px;
+    flex-wrap:wrap;
+    align-items:center;
+  }
+  .notice-box button{
+    font-size:0.78rem;
+    padding:3px 8px;
+  }
+  .notice-box button.suggested{
+    font-weight:700;
+    border-color:#5b4300;
+  }
+
+  .structure-info{
+    padding:8px 12px;
+    border-top:1px solid var(--line);
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(190px,1fr));
+    gap:4px 16px;
+    font-size:0.82rem;
+  }
+  .structure-info-row{
+    display:flex;
+    justify-content:space-between;
+    gap:8px;
+  }
+  .structure-info .label{
+    color:var(--muted, #777);
+  }
+  .structure-info .value{
+    font-weight:600;
+    text-align:right;
+    word-break:break-all;
+  }
+
+  /* Required inputs + Predict button, kept as part of #draw-box itself so
+     they stay visible whether the editor is at normal size or expanded to
+     fullscreen (fullscreen only changes #draw-box's positioning, not what's
+     inside it). */
+  .draw-box-footer{
+    display:flex;
+    align-items:flex-end;
+    gap:12px;
+    padding:10px 12px;
+    border-top:1px solid var(--line);
+    background:var(--paper);
+    flex-wrap:wrap;
+    flex-shrink:0;
+  }
+  .draw-box-footer .field-group{
+    flex:1 1 240px;
+    margin:0;
+  }
+  .draw-box-footer .required{
+    color:#c0392b;
+  }
+  .draw-box-footer .btn{
+    flex:0 0 auto;
+  }
+
   .fallback-box{ display:none; }
   .fallback-box.active{ display:block; }
 </style>
@@ -35,9 +170,12 @@
 
   <h1>Toxicity screen</h1>
   <p class="muted">
-    Draw the molecule's structure for the most reliable prediction (captures stereochemistry,
-    conformers, and full connectivity). If you don't have a drawing available, you can paste a
-    SMILES string instead.
+    Draw the molecule's structure for the most reliable prediction (captures full 2D connectivity
+    and any stereochemistry you mark). If you don't have a drawing available, you can paste a
+    SMILES string instead — it will be loaded into the same editor below so it can be checked
+    before predicting. Note: the structure captured here is a 2D representation; if the prediction
+    model requires 3D conformers, those are generated separately on the server and are not part of
+    what this editor produces.
   </p>
 
   <form method="post" action="{% url 'web:predict' %}" id="predict-form" class="card">
@@ -55,64 +193,440 @@
     </div>
 
     <div id="draw-box">
-      <iframe id="ketcher-frame" src="{% static 'ketcher/index.html' %}"></iframe>
-    </div>
 
-    <div id="smiles-box" class="fallback-box field-group">
-      <label for="smiles_manual">SMILES</label>
-      <input type="text" id="smiles_manual" class="mono" placeholder="CC(=O)Oc1ccccc1C(=O)O">
-      <p class="muted" style="font-size:0.8rem;">
-        A bare molecular formula (e.g. C9H8O4) is not accepted here — it doesn't specify a
-        unique structure, since many different molecules can share the same formula. Prediction
-        requires one exact structure, provided either by drawing it or by SMILES.
-      </p>
+      <div class="draw-toolbar">
+        <div class="draw-toolbar-left">
+          <button type="button" id="import-file-btn" onclick="document.getElementById('structure-file-input').click()">Import file</button>
+          <input type="file" id="structure-file-input" accept=".mol,.sdf,.smi,.smiles,.txt,.rxn" style="display:none" onchange="importStructureFile(event)">
+          <button type="button" id="reset-structure-btn" onclick="resetStructure()">Reset</button>
+          <button type="button" id="export-mol-btn" onclick="exportMolfile()">Export .mol</button>
+          <button type="button" id="export-sdf-btn" onclick="exportSDF()">Export .sdf</button>
+          <button type="button" id="export-img-btn" onclick="exportImage()">Export image</button>
+        </div>
+        <button type="button" id="expand-editor-btn" onclick="toggleEditorFullscreen()">Expand editor</button>
+      </div>
+
+      <iframe id="ketcher-frame"
+              src="{% static 'ketcher/index.html' %}"
+              allow="clipboard-read; clipboard-write"
+              onload="onKetcherFrameLoad()"></iframe>
+
+      <div id="smiles-box" class="fallback-box field-group">
+        <label for="smiles_manual">SMILES</label>
+        <div class="smiles-input-row">
+          <input type="text" id="smiles_manual" class="mono" placeholder="CC(=O)Oc1ccccc1C(=O)O">
+          <button type="button" onclick="loadSmilesIntoEditor()">Load into editor</button>
+        </div>
+        <p class="muted" style="font-size:0.8rem;">
+          A bare molecular formula (e.g. C9H8O4) is not accepted here — it doesn't specify a
+          unique structure, since many different molecules can share the same formula. Prediction
+          requires one exact structure, provided either by drawing it or by SMILES.
+        </p>
+        <p id="smiles-load-status" class="muted" style="font-size:0.8rem;"></p>
+      </div>
+
+      <div id="fragment-warning" class="notice-box" style="display:none;"></div>
+
+      <div id="structure-info" class="structure-info">
+        <div class="structure-info-row"><span class="label">Status</span><span id="info-status" class="value">No structure yet</span></div>
+        <div class="structure-info-row"><span class="label">Formula</span><span id="info-formula" class="value">—</span></div>
+        <div class="structure-info-row"><span class="label">Mol. weight</span><span id="info-mw" class="value">—</span></div>
+        <div class="structure-info-row"><span class="label">Stereochemistry</span><span id="info-stereo" class="value">—</span></div>
+        <div class="structure-info-row"><span class="label">InChI</span><span id="info-inchi" class="value mono">—</span></div>
+      </div>
+
+      <div class="draw-box-footer">
+        <div class="field-group">
+          <label for="brand_name">Brand name <span class="required">*</span></label>
+          <input type="text" id="brand_name" name="brand_name" class="mono" required placeholder="e.g. Tylenol">
+        </div>
+        <div class="field-group">
+          <label for="generic_name">Generic name</label>
+          <input type="text" id="generic_name" name="generic_name" class="mono" placeholder="e.g. Acetaminophen">
+        </div>
+        <div class="field-group">
+          <label for="chemical_name">Chemical name</label>
+          <input type="text" id="chemical_name" name="chemical_name" class="mono" placeholder="e.g. N-(4-hydroxyphenyl)acetamide">
+        </div>
+        <button type="submit" class="btn btn-primary" onclick="return prepareSubmit()">Predict</button>
+      </div>
+
     </div>
 
     <input type="hidden" name="smiles" id="smiles_final">
-    <button type="submit" class="btn btn-primary" onclick="return prepareSubmit()">Predict</button>
   </form>
 
   {% if error %}
     <ul class="messages"><li class="error">{{ error }}</li></ul>
   {% endif %}
 
+  <p class="muted" style="font-size:0.8rem;">
+    Note: this editor validates that what you draw or paste parses as a real structure, and gives
+    you a heads-up about stray stereochemistry markers or multiple disconnected fragments. It does
+    not standardize salts/charges, canonicalize the SMILES, generate an InChIKey, or de-duplicate
+    against previous predictions — those steps happen server-side once the structure is submitted,
+    and the server re-validates the structure rather than trusting this page's checks alone.
+  </p>
+
 {% endblock %}
 
 {% block extra_js %}
 <script>
+  let ketcherSubscribed = false;
+
+  function getKetcherWin() {
+    const frame = document.getElementById('ketcher-frame');
+    return frame ? frame.contentWindow : null;
+  }
+
+  function debounce(fn, wait) {
+    let t;
+    return function (...args) {
+      clearTimeout(t);
+      t = setTimeout(() => fn.apply(this, args), wait);
+    };
+  }
+
+  function onKetcherFrameLoad() {
+    waitForKetcher();
+  }
+
+  function waitForKetcher(retries) {
+    retries = retries || 0;
+    const win = getKetcherWin();
+
+    if (win && win.ketcher) {
+      if (!ketcherSubscribed) {
+        ketcherSubscribed = true;
+        try {
+          // Keeps the info panel / fragment warning in sync as the user draws.
+          win.ketcher.editor.subscribe('change', debounce(refreshStructureInfo, 400));
+        } catch (e) {
+          // Some Ketcher builds don't expose editor.subscribe the same way —
+          // fall back to light polling so the info panel still updates.
+          setInterval(refreshStructureInfo, 2500);
+        }
+      }
+      refreshStructureInfo();
+    } else if (retries < 40) {
+      setTimeout(function () { waitForKetcher(retries + 1); }, 250);
+    }
+  }
+  waitForKetcher();
+
   function setMode(mode) {
-    document.getElementById('draw-box').style.display = (mode === 'draw') ? 'block' : 'none';
     document.getElementById('smiles-box').classList.toggle('active', mode === 'smiles');
   }
 
-  function prepareSubmit() {
-    const mode = document.querySelector('input[name="input_mode"]:checked').value;
-    const finalField = document.getElementById('smiles_final');
+  async function loadSmilesIntoEditor() {
+    const manual = document.getElementById('smiles_manual').value.trim();
+    const status = document.getElementById('smiles-load-status');
+    if (!manual) {
+      status.textContent = 'Enter a SMILES string first.';
+      return;
+    }
+    const win = getKetcherWin();
+    if (!win || !win.ketcher) {
+      status.textContent = 'Editor is still loading — try again in a moment.';
+      return;
+    }
+    try {
+      // setMolecule doubles as structure validation: it rejects text that
+      // isn't a parseable structure.
+      await win.ketcher.setMolecule(manual);
+      status.textContent = 'Loaded into the editor above.';
+      refreshStructureInfo();
+    } catch (e) {
+      status.textContent = 'That SMILES could not be parsed as a valid structure: ' + e;
+    }
+  }
 
-    if (mode === 'smiles') {
-      const manual = document.getElementById('smiles_manual').value.trim();
-      if (!manual) {
-        alert('Please enter a SMILES string.');
-        return false;
+  async function resetStructure() {
+    const win = getKetcherWin();
+    if (!win || !win.ketcher) return;
+    try {
+      await win.ketcher.setMolecule('');
+    } catch (e) {
+      // some builds throw on an empty string — safe to ignore
+    }
+    document.getElementById('smiles_manual').value = '';
+    document.getElementById('smiles-load-status').textContent = '';
+    refreshStructureInfo();
+  }
+
+  function importStructureFile(evt) {
+    const file = evt.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async function () {
+      const win = getKetcherWin();
+      if (!win || !win.ketcher) {
+        alert('Editor is still loading — please try again in a moment.');
+        return;
       }
-      finalField.value = manual;
-      return true;
+      try {
+        // ketcher.setMolecule auto-detects SMILES vs. Molfile/SDF/RXN text,
+        // so the same call works for any of the accepted file types.
+        await win.ketcher.setMolecule(reader.result);
+        refreshStructureInfo();
+      } catch (e) {
+        alert('Could not load that file as a structure: ' + e);
+      }
+    };
+    reader.readAsText(file);
+    evt.target.value = '';
+  }
+
+  async function exportMolfile() {
+    const win = getKetcherWin();
+    if (!win || !win.ketcher) return;
+    try {
+      const molfile = await win.ketcher.getMolfile();
+      downloadText(molfile, 'structure.mol');
+    } catch (e) {
+      alert('Nothing to export yet — draw or load a structure first.');
+    }
+  }
+
+  async function exportSDF() {
+    const win = getKetcherWin();
+    if (!win || !win.ketcher) return;
+    try {
+      const molfile = await win.ketcher.getMolfile();
+      // A single-record SD file is just a molfile followed by the SDF
+      // end-of-record tag.
+      downloadText(molfile + '\n$$$$\n', 'structure.sdf');
+    } catch (e) {
+      alert('Nothing to export yet — draw or load a structure first.');
+    }
+  }
+
+  async function exportImage() {
+    const win = getKetcherWin();
+    if (!win || !win.ketcher) {
+      alert('Editor is still loading — please try again in a moment.');
+      return;
+    }
+    // Prefer Ketcher's own image-generation API — it renders from the
+    // structure model directly, so it doesn't depend on how a given build
+    // happens to lay out its internal DOM/SVG. Fall back to scraping the
+    // rendered <svg> only if that API isn't available on this build.
+    try {
+      if (typeof win.ketcher.generateImage === 'function') {
+        const molfile = await win.ketcher.getMolfile();
+        const blob = await win.ketcher.generateImage(molfile, { outputFormat: 'svg' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'structure.svg';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        return;
+      }
+    } catch (e) {
+      // fall through to DOM-scrape fallback below
+    }
+    try {
+      const frame = document.getElementById('ketcher-frame');
+      const svg = frame.contentDocument.querySelector('svg');
+      if (!svg) {
+        alert('Nothing to export yet — draw or load a structure first.');
+        return;
+      }
+      const serialized = new XMLSerializer().serializeToString(svg);
+      downloadText(serialized, 'structure.svg', 'image/svg+xml');
+    } catch (e) {
+      alert('Could not export an image from the editor: ' + e);
+    }
+  }
+
+  function downloadText(content, filename, mime) {
+    const blob = new Blob([content], { type: mime || 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function toggleEditorFullscreen() {
+    const box = document.getElementById('draw-box');
+    const btn = document.getElementById('expand-editor-btn');
+    const expanding = !box.classList.contains('is-fullscreen');
+    box.classList.toggle('is-fullscreen', expanding);
+    btn.textContent = expanding ? 'Exit fullscreen' : 'Expand editor';
+  }
+
+  async function refreshStructureInfo() {
+    const win = getKetcherWin();
+    const statusEl = document.getElementById('info-status');
+    const formulaEl = document.getElementById('info-formula');
+    const mwEl = document.getElementById('info-mw');
+    const stereoEl = document.getElementById('info-stereo');
+    const inchiEl = document.getElementById('info-inchi');
+
+    if (!win || !win.ketcher) return;
+
+    let smiles = '';
+    try {
+      smiles = await win.ketcher.getSmiles();
+    } catch (e) {
+      // nothing drawn yet
     }
 
-    const frame = document.getElementById('ketcher-frame');
-    const ketcherWin = frame.contentWindow;
+    if (!smiles) {
+      statusEl.textContent = 'No structure yet';
+      formulaEl.textContent = '—';
+      mwEl.textContent = '—';
+      stereoEl.textContent = '—';
+      inchiEl.textContent = '—';
+      document.getElementById('fragment-warning').style.display = 'none';
+      return;
+    }
 
-    if (!ketcherWin || !ketcherWin.ketcher) {
+    statusEl.textContent = 'Structure OK';
+
+    // Molecular formula / weight, via Ketcher's own calculation service
+    // where the page has access to it. If a given Ketcher build doesn't
+    // expose this, fields fall back to pointing at the editor's built-in
+    // Analyse tool rather than guessing at values.
+    try {
+      if (win.ketcher.structService && typeof win.ketcher.structService.calculate === 'function') {
+        const molfile = await win.ketcher.getMolfile();
+        const calc = await win.ketcher.structService.calculate(molfile, ['gross-formula', 'molecular-weight']);
+        formulaEl.textContent = (calc && (calc['gross-formula'] || calc.grossFormula)) || 'Unavailable';
+        mwEl.textContent = (calc && (calc['molecular-weight'] || calc.molecularWeight)) || 'Unavailable';
+      } else {
+        formulaEl.textContent = 'See editor’s Analyse (Σ) tool';
+        mwEl.textContent = 'See editor’s Analyse (Σ) tool';
+      }
+    } catch (e) {
+      formulaEl.textContent = 'Unavailable';
+      mwEl.textContent = 'Unavailable';
+    }
+
+    // InChI, for uniquely identifying the molecule. Note: this is the InChI
+    // string itself, not the shorter hashed InChIKey — Ketcher's browser API
+    // doesn't derive the InChIKey, so that (and any structure standardization
+    // used to compute it consistently) is done server-side on submission.
+    try {
+      if (typeof win.ketcher.getInchi === 'function') {
+        const inchi = await win.ketcher.getInchi(false);
+        inchiEl.textContent = inchi || 'Unavailable';
+      } else {
+        inchiEl.textContent = 'Unavailable';
+      }
+    } catch (e) {
+      inchiEl.textContent = 'Unavailable';
+    }
+
+    // Lightweight check straight from the SMILES text for whether any
+    // stereo notation is present at all — this only detects the presence of
+    // '@'/'@@' and '/'/'\' markers, it does not verify that the marked
+    // stereocenters are chemically valid/unambiguous (e.g. under-specified
+    // centers, conflicting double-bond marks). That deeper validation is
+    // left to the server-side structure check.
+    const hasTetrahedral = smiles.includes('@');
+    const hasCisTrans = /\/|\\/.test(smiles);
+    if (hasTetrahedral || hasCisTrans) {
+      const parts = [];
+      if (hasTetrahedral) parts.push('tetrahedral center(s)');
+      if (hasCisTrans) parts.push('double-bond (E/Z) geometry');
+      stereoEl.textContent = 'Marked: ' + parts.join(', ') + ' (not yet validated)';
+    } else {
+      stereoEl.textContent = 'None marked — verify this is intended';
+    }
+
+    checkFragments(smiles);
+  }
+
+  function checkFragments(smiles) {
+    const fragments = smiles.split('.').filter(Boolean);
+    const box = document.getElementById('fragment-warning');
+    if (fragments.length <= 1) {
+      box.style.display = 'none';
+      box.innerHTML = '';
+      return;
+    }
+
+    // Heuristic only: heavy-atom count (letters that start an element
+    // symbol) as a rough proxy for which fragment is most likely the parent
+    // drug rather than a counter-ion/solvate. This is not a substitute for
+    // real salt-stripping logic (server-side, ideally via a cheminformatics
+    // toolkit), just a hint to make the common case fewer clicks.
+    function roughHeavyAtomCount(frag) {
+      const matches = frag.match(/[A-Z][a-z]?/g);
+      return matches ? matches.length : frag.length;
+    }
+    let likelyParentIdx = 0;
+    let bestCount = -1;
+    fragments.forEach(function (frag, i) {
+      const c = roughHeavyAtomCount(frag);
+      if (c > bestCount) {
+        bestCount = c;
+        likelyParentIdx = i;
+      }
+    });
+
+    box.style.display = 'block';
+    let html = '<strong>' + fragments.length + ' disconnected components detected</strong> ' +
+      '(possible salt form or mixture). Prediction is generally more reliable on the parent ' +
+      'structure alone — the largest fragment below is our best guess at which one that is, ' +
+      'but please confirm it visually.' +
+      '<div class="fragment-option">';
+    fragments.forEach(function (frag, i) {
+      const isSuggested = i === likelyParentIdx;
+      html += '<button type="button" class="' + (isSuggested ? 'suggested' : '') + '" onclick="useFragmentOnly(' + i + ')">' +
+        (isSuggested ? '★ ' : '') + 'Use fragment ' + (i + 1) + ' only (' + frag + ')' +
+        (isSuggested ? ' — likely parent' : '') + '</button>';
+    });
+    html += '<button type="button" onclick="dismissFragmentWarning()">Keep all components</button></div>';
+    box.innerHTML = html;
+    box.dataset.fragments = JSON.stringify(fragments);
+  }
+
+  async function useFragmentOnly(index) {
+    const box = document.getElementById('fragment-warning');
+    const fragments = JSON.parse(box.dataset.fragments || '[]');
+    const frag = fragments[index];
+    if (!frag) return;
+    const win = getKetcherWin();
+    try {
+      await win.ketcher.setMolecule(frag);
+      refreshStructureInfo();
+    } catch (e) {
+      alert('Could not load that fragment: ' + e);
+    }
+  }
+
+  function dismissFragmentWarning() {
+    document.getElementById('fragment-warning').style.display = 'none';
+  }
+
+  function prepareSubmit() {
+    const brandName = document.getElementById('brand_name').value.trim();
+    if (!brandName) {
+      alert('Please enter the brand name.');
+      return false;
+    }
+
+    const win = getKetcherWin();
+    if (!win || !win.ketcher) {
       alert('Structure editor is still loading — please wait a moment and try again.');
       return false;
     }
 
-    ketcherWin.ketcher.getSmiles().then(function (smiles) {
+    win.ketcher.getSmiles().then(function (smiles) {
       if (!smiles) {
-        alert('Please draw a structure before predicting.');
+        alert('Please draw or load a structure before predicting.');
         return;
       }
-      finalField.value = smiles;
+      document.getElementById('smiles_final').value = smiles;
       document.getElementById('predict-form').submit();
     }).catch(function (err) {
       alert('Could not read the structure from the editor: ' + err);

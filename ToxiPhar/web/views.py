@@ -18,9 +18,16 @@ def _risk_level(probability: float) -> str:
 def predict_view(request):
     if request.method == "POST":
         smiles = request.POST.get("smiles", "").strip()
+        brand_name = request.POST.get("brand_name", "").strip()
+        generic_name = request.POST.get("generic_name", "").strip()
+        chemical_name = request.POST.get("chemical_name", "").strip()
+
+        if not brand_name:
+            request.session["predict_error"] = "Enter the brand name before submitting."
+            return redirect(reverse("web:predict"))
 
         if not smiles:
-            request.session["predict_error"] = "Enter a SMILES string before submitting."
+            request.session["predict_error"] = "Draw a chemical structure before submitting."
             return redirect(reverse("web:predict"))
 
         try:
@@ -36,16 +43,23 @@ def predict_view(request):
             return redirect(reverse("web:predict"))
 
         request.session["predict_result"] = result
+        request.session["predict_meta"] = {
+            "brand_name": brand_name,
+            "generic_name": generic_name,
+            "chemical_name": chemical_name,
+            "smiles": smiles,
+        }
         return redirect(reverse("web:report"))
 
     error = request.session.pop("predict_error", None)
     return render(request, "web/predict.html", {"error": error})
 
+
 def report_view(request):
     result = request.session.pop("predict_result", None)
+    meta = request.session.pop("predict_meta", None)
 
     if result is None:
-        # Someone hit /report/ directly with nothing to show.
         return render(request, "web/report.html", {"result": None})
 
     endpoints = []
@@ -57,4 +71,17 @@ def report_view(request):
             "risk_level": _risk_level(data["probability"]),
         })
 
-    return render(request, "web/report.html", {"result": result, "endpoints": endpoints})
+    report = PredictionReport.objects.create(
+        user=request.user if request.user.is_authenticated else None,
+        brand_name=meta["brand_name"],
+        generic_name=meta.get("generic_name", ""),
+        chemical_name=meta.get("chemical_name", ""),
+        smiles=meta["smiles"],
+        result=result,
+    )
+
+    return render(
+        request,
+        "web/report.html",
+        {"result": result, "endpoints": endpoints, "report": report},
+    )
