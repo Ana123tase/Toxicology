@@ -251,13 +251,29 @@ def report_view(request):
             })
         item["endpoints"] = endpoints
 
+        # Resolve name fields ONCE, from session data, independent of DB save success/failure.
+        # The template must never depend on item.report for display names — DB writes can fail.
+        idx = item.get("index", 0)
+        if metas and idx < len(metas):
+            brand_name = metas[idx].get("brand_name", "")
+            generic_name = metas[idx].get("generic_name", "")
+            chemical_name = metas[idx].get("chemical_name", "")
+        else:
+            brand_name = meta.get("brand_name", "") if meta else ""
+            generic_name = meta.get("generic_name", "") if meta else ""
+            chemical_name = meta.get("chemical_name", "") if meta else ""
+
+        item["brand_name"] = brand_name
+        item["generic_name"] = generic_name
+        item["chemical_name"] = chemical_name
+
         report_obj = None
         if PredictionReport is not None:
             try:
                 kwargs = {
-                    "brand_name": (metas[item["index"]]["brand_name"] if metas and item["index"] < len(metas) else meta.get("brand_name", "") if meta else ""),
-                    "generic_name": (metas[item["index"]].get("generic_name", "") if metas else meta.get("generic_name", "") if meta else ""),
-                    "chemical_name": (metas[item["index"]].get("chemical_name", "") if metas else meta.get("chemical_name", "") if meta else ""),
+                    "brand_name": brand_name,
+                    "generic_name": generic_name,
+                    "chemical_name": chemical_name,
                     "smiles": smi,
                     "result": res,
                 }
@@ -280,4 +296,7 @@ def report_view(request):
         context["endpoints"] = results[0]["endpoints"]
         context["report"] = results[0]["report"]
         context["smiles"] = results[0]["smiles"]
+        context["brand_name"] = results[0]["brand_name"]
+        context["generic_name"] = results[0]["generic_name"]
+        context["chemical_name"] = results[0]["chemical_name"]
     return render(request, "web/report.html", context)

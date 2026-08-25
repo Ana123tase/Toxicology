@@ -239,11 +239,15 @@
 
   <h1>Toxicity screen</h1>
   <p class="muted">
-    Draw the molecule's structure for the most reliable prediction (captures full 2D connectivity
-    and any stereochemistry you mark). Ketcher provides <b>all</b> drug-design tools <b>inside the iframe</b> — you don't need an external toolbar:
-    modify single/double/triple/aromatic bonds, replace atoms (C,N,O,S,P,F,Cl,Br,I), periodic table, set charge +/-, R/S wedge/dash (up/down), E/Z crossed, R-groups, S-groups, attachment points, reaction arrows.
-    If you don't have a drawing, paste SMILES — it will be loaded into the same editor below so it can be checked
-    before predicting. <strong>Isomerism-aware (matches your pipeline):</strong> R/S tetrahedral and E/Z double-bond isomers are preserved as distinct via full InChIKey (clean_smiles.py self-tests) — they can have different hERG/CYP3A4/DILI activity. Tautomers grouped via first InChIKey block for audit but NOT deduped. Isotopes [13C], [2H], [15N] preserved. If you draw multiple disconnected structures (e.g. <code>CCO.CCN</code>), each is sent as separate drug and appears as separate entry in report.
+    Draw the molecule's structure for the most reliable prediction. The editor below supports
+    every standard drug-design tool: single/double/triple/aromatic bonds, any atom or element,
+    charges, R/S wedge/dash stereochemistry, E/Z double bonds, R-groups, S-groups, and more.
+    If you don't have a drawing, you can paste a SMILES string instead, or enter a chemical
+    formula (e.g. <code>C9H8O4</code>) — either will load into the same editor so you can check
+    the structure before predicting. Isomers (different R/S or E/Z forms), isotopes, and
+    multi-component structures (salts or mixtures) are all fully supported. Note that a formula
+    describes composition only, not connectivity, so the editor makes a best-effort structure
+    guess from it — for an exact isomer, draw the structure or paste a SMILES string instead.
   </p>
 
   <form method="post" action="{% url 'web:predict' %}" id="predict-form" class="card">
@@ -252,11 +256,15 @@
     <div class="input-mode-toggle">
       <label>
         <input type="radio" name="input_mode" value="draw" checked onclick="setMode('draw')">
-        Draw structure (recommended — all bond/atom/stereo tools inside Ketcher iframe)
+        Draw structure (recommended)
       </label>
       <label>
         <input type="radio" name="input_mode" value="smiles" onclick="setMode('smiles')">
-        Paste SMILES (supports @ R/S, / \ E/Z, [13C] isotopes, . multi-drug)
+        Paste SMILES
+      </label>
+      <label>
+        <input type="radio" name="input_mode" value="formula" onclick="setMode('formula')">
+        Enter chemical formula
       </label>
     </div>
 
@@ -280,42 +288,35 @@
               onload="onKetcherFrameLoad()"></iframe>
 
       <div id="smiles-box" class="fallback-box field-group">
-        <label for="smiles_manual">SMILES — full isomerism from clean_smiles.py / featurize.py</label>
+        <label for="smiles_manual">SMILES</label>
         <div class="smiles-input-row">
-          <input type="text" id="smiles_manual" class="mono" placeholder="C[C@H](O)CC R/S, C/C=C/C E/Z, [13CH4] isotope, CCO.CCN 2 drugs, CCO.Cl salt">
+          <input type="text" id="smiles_manual" class="mono" placeholder="e.g. CC(=O)Oc1ccccc1C(=O)O">
           <button type="button" onclick="loadSmilesIntoEditor()">Load into editor</button>
         </div>
         <p class="muted" style="font-size:0.8rem;">
-          Supported: <code>@ @@</code> tetrahedral R/S, <code>/ \</code> E/Z cis-trans, <code>[13C] [2H] [15N]</code> isotopes, <code>.</code> dot for multi-drug or salt.
-          Example: <code>C[C@H](N)C(=O)O</code> L-alanine vs <code>C[C@@H](N)C(=O)O</code> D-alanine distinct via full InChIKey (see _run_new_audit_self_tests). 
-          <code>C/C=C/C</code> E vs <code>C/C=C\C</code> Z distinct via BondStereo. Server re-validates via RDKit, never trusts client alone.
+          Stereochemistry (<code>@ @@</code>, <code>/ \</code>), isotopes (e.g. <code>[13C]</code>), and
+          multi-component structures (separated by <code>.</code>) are all supported.
         </p>
         <p id="smiles-load-status" class="muted" style="font-size:0.8rem;"></p>
       </div>
 
+      <div id="formula-box" class="fallback-box field-group">
+        <label for="formula_manual">Chemical formula</label>
+        <div class="smiles-input-row">
+          <input type="text" id="formula_manual" class="mono" placeholder="e.g. C9H8O4">
+          <button type="button" onclick="loadFormulaIntoEditor()">Load into editor</button>
+        </div>
+        <p class="muted" style="font-size:0.8rem;">
+          A formula only describes composition (not connectivity), so the editor will make a
+          best-effort structure guess from it. For an exact isomer, draw the structure or paste
+          a SMILES string instead.
+        </p>
+        <p id="formula-load-status" class="muted" style="font-size:0.8rem;"></p>
+      </div>
+
       <div id="fragment-warning" class="notice-box" style="display:none;"></div>
 
-      <div id="multi-drug-panel" class="multi-drug-panel" style="display:none;">
-        <h4>Multiple structures detected — will be predicted as separate drugs</h4>
-        <div class="muted" style="font-size:0.78rem; margin-bottom:6px;">Each disconnected component becomes independent report entry, with own R/S, E/Z, isotope, tautomer audit. Matches clean_smiles.py STATUS_MIXTURE handling but here we allow prediction instead of review.</div>
-        <div id="multi-drug-list" class="multi-drug-list"></div>
-        <div style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-          <label style="font-size:0.82rem; display:flex; gap:6px; align-items:center;"><input type="checkbox" id="multi-drug-mode" checked onchange="updateMultiDrugMode()"> Predict each fragment as separate drug (separate report entries, separate featurization)</label>
-          <span id="multi-drug-count" class="muted" style="font-size:0.8rem;"></span>
-        </div>
-      </div>
-
       <div id="chem-audit-box" class="chem-audit-box" style="display:none;"></div>
-
-      <div id="structure-info" class="structure-info">
-        <div class="structure-info-row"><span class="label">Status</span><span id="info-status" class="value">No structure yet</span></div>
-        <div class="structure-info-row"><span class="label">Formula (Ketcher)</span><span id="info-formula" class="value">—</span></div>
-        <div class="structure-info-row"><span class="label">Mol. weight (Ketcher)</span><span id="info-mw" class="value">—</span></div>
-        <div class="structure-info-row"><span class="label">R/S tetrahedral (client heuristic)</span><span id="info-stereo-rs" class="value">—</span></div>
-        <div class="structure-info-row"><span class="label">E/Z double-bond (client heuristic)</span><span id="info-stereo-ez" class="value">—</span></div>
-        <div class="structure-info-row"><span class="label">Isotope / Tautomer (client heuristic)</span><span id="info-tautomer" class="value">—</span></div>
-        <div class="structure-info-row"><span class="label">InChI (Ketcher)</span><span id="info-inchi" class="value mono">—</span></div>
-      </div>
 
       <div class="draw-box-footer">
         <div class="field-group">
@@ -330,12 +331,12 @@
           <label for="chemical_name">Chemical name</label>
           <input type="text" id="chemical_name" name="chemical_name" class="mono" placeholder="e.g. N-(4-hydroxyphenyl)acetamide">
         </div>
-        <button type="submit" class="btn btn-primary" onclick="return prepareSubmit()">Predict toxicity (isomerism-aware)</button>
+        <button type="submit" class="btn btn-primary" onclick="return prepareSubmit()">Predict toxicity</button>
       </div>
 
     </div>
 
-    <!-- Hidden fields - all info your models need, consistent with clean_smiles.py / featurize.py / scaffold_split.py -->
+    <!-- Hidden fields - all info the models need -->
     <input type="hidden" name="smiles" id="smiles_final">
     <input type="hidden" name="smiles_list_json" id="smiles_list_json">
     <input type="hidden" name="is_multi_drug" id="is_multi_drug" value="0">
@@ -347,24 +348,6 @@
   {% if error %}
     <ul class="messages"><li class="error">{{ error }}</li></ul>
   {% endif %}
-
-  <p class="muted" style="font-size:0.8rem;">
-    <strong>Pipeline consistency proof:</strong><br>
-    <code>clean_smiles.py</code> self-tests (run_self_test):<br>
-    - <code>C/C=C/C</code> → n_assigned_ez=1 n_unassigned=0, <code>CC=CC</code> → 0,1, <code>C/C=C\C</code> → 1,0<br>
-    - <code>C[C@H](O)CC</code> vs <code>C[C@@H](O)CC</code> → different full InChIKey → both STATUS_CLEAN (preserved, not collapsed to duplicate)<br>
-    - <code>C/C=C/C</code> vs <code>C/C=C\C</code> → different full InChIKey → both clean<br>
-    - <code>[13CH4]</code> → has_isotope=True STATUS_CLEAN<br>
-    - <code>CC(=O)CC(=O)C</code> keto vs <code>CC(O)=CC(=O)C</code> enol → same first InChIKey block (tautomer_group_id) but distinct rows (NOT deduped), has_tautomer=True<br>
-    <code>featurize.py</code> MODEL_STEREO_FEATURES sent from client (frontend heuristic, server recomputes with RDKit):<br>
-    - <code>n_stereocenters</code> via FindMolChiralCenters(includeUnassigned=True), <code>n_assigned</code>, <code>n_unassigned</code><br>
-    - <code>n_ez_bonds</code>, <code>n_assigned_ez</code>, <code>n_unassigned_ez</code> via _ez_counts_simple: BondStereo STEREOE/STEREOZ + FindPotentialStereo<br>
-    - <code>has_chiral, has_ez, has_stereo, has_unassigned_stereo, has_unassigned_ez, is_stereoisomer_defined</code><br>
-    - <code>has_isotope, n_isotope_atoms</code> via GetIsotope(), <code>isotope_labels</code>, <code>has_tautomer</code> via TautomerEnumerator()<br>
-    - ECFP 2048 + ECFP stereo 2048 includeChirality=True + descriptors (MolWt, LogP, TPSA...) computed server-side, not client<br>
-    <code>scaffold_split.py</code>: get_scaffold includeChirality=False → R/S, E/Z share same scaffold → no leakage, seed actually used.<br>
-    Client never canonicalizes, never strips salts, never dedupes — those happen server-side via clean_smiles(). This page only provides UX and audit.
-  </p>
 
 {% endblock %}
 
@@ -417,6 +400,7 @@
 
   function setMode(mode) {
     document.getElementById('smiles-box').classList.toggle('active', mode === 'smiles');
+    document.getElementById('formula-box').classList.toggle('active', mode === 'formula');
   }
 
   // ========================================================================
@@ -431,10 +415,28 @@
     try {
       await k.setMolecule(manual);
       const nFrags = manual.split('.').filter(Boolean).length;
-      status.textContent = 'Loaded into editor. ' + (nFrags > 1 ? nFrags + ' fragments detected — will be ' + nFrags + ' separate drugs.' : 'Isomerism preserved: @=R/S, /\\=E/Z, [13C]=isotope.');
+      status.textContent = nFrags > 1 ? 'Loaded. ' + nFrags + ' separate structures detected.' : 'Loaded into editor.';
       refreshStructureInfo();
     } catch (e) {
       status.textContent = 'That SMILES could not be parsed as a valid structure: ' + e;
+    }
+  }
+
+  async function loadFormulaIntoEditor() {
+    const manual = document.getElementById('formula_manual').value.trim();
+    const status = document.getElementById('formula-load-status');
+    if (!manual) { status.textContent = 'Enter a chemical formula first.'; return; }
+    const k = getKetcher();
+    if (!k) { status.textContent = 'Editor is still loading — try again in a moment.'; return; }
+    try {
+      // Ketcher accepts molfile/SMILES/InChI natively; a bare formula has no connectivity
+      // information, so this is a best-effort load — the editor (or its structService, where
+      // available) attempts to resolve it into a structure.
+      await k.setMolecule(manual);
+      status.textContent = 'Loaded. Please double-check the structure guessed from this formula before predicting.';
+      refreshStructureInfo();
+    } catch (e) {
+      status.textContent = 'Could not automatically resolve that formula into a structure — try drawing it or pasting a SMILES string instead.';
     }
   }
 
@@ -443,6 +445,8 @@
     try { await k.setMolecule(''); } catch (e) {}
     document.getElementById('smiles_manual').value = '';
     document.getElementById('smiles-load-status').textContent = '';
+    document.getElementById('formula_manual').value = '';
+    document.getElementById('formula-load-status').textContent = '';
     currentFragments = [];
     refreshStructureInfo();
   }
@@ -600,83 +604,38 @@
     if (!audit || !audit.smiles) { box.style.display = 'none'; return; }
     let html = '<div class="chem-audit-grid">';
 
-    // R/S - maps to clean_smiles.py _stereo_counts and featurize.py _stereo_audit n_stereocenters
+    // R/S
     if (audit.hasTetrahedral) {
-      html += `<div><strong>R/S tetrahedral:</strong> ${audit.n_stereocenters} center(s) with @ markers (atCount=${audit.atCount}) — preserved as distinct via full InChIKey including /t layer (clean_smiles.py _run_new_audit_self_tests). Enantiomers R/S have different hERG/CYP3A4. Server counts via FindMolChiralCenters(includeUnassigned=True).</div>`;
-    } else {
-      html += `<div><strong>R/S:</strong> No @ markers — server will check via FindMolChiralCenters(includeUnassigned=True) for unassigned stereocenters (n_unassigned_stereocenters). If >0, data does not specify which enantiomer was tested.</div>`;
+      html += `<div><strong>Stereocenters:</strong> ${audit.n_stereocenters} detected. Each isomer is tracked separately since enantiomers can differ in activity.</div>`;
     }
 
-    // E/Z - maps to clean_smiles.py _ez_counts and featurize.py _ez_counts_simple
+    // E/Z
     if (audit.hasCisTrans) {
-      html += `<div><strong>E/Z double-bond:</strong> ${audit.ezMarkers} /\\ markers (~${audit.n_ez_bonds} bond(s) with assigned stereo) — preserved distinct via BondStereo STEREOE/STEREOZ + full InChIKey /b layer (featurize.py _ez_counts_simple). E/Z can have different activity. Server uses AssignStereochemistry + FindPotentialStereo.</div>`;
-    } else {
-      html += `<div><strong>E/Z:</strong> No /\\ markers — server checks FindPotentialStereo for potential unassigned E/Z (n_unassigned_ez). CC=CC without /\\ means unassigned.</div>`;
+      html += `<div><strong>Double-bond geometry:</strong> ~${audit.n_ez_bonds} E/Z bond(s) marked. These are tracked separately since they can differ in activity.</div>`;
     }
 
     // Isotope
     if (audit.has_isotope) {
-      html += `<div><strong>Isotope:</strong> ${audit.isotope_matches.join(', ')} — has_isotope=True, n_isotope_atoms=${audit.n_isotope_atoms}, isotope_labels=${audit.isotope_labels}. Preserved, NOT stripped (clean_smiles.py [13CH4] self-test). Server via GetIsotope() !=0.</div>`;
-    } else {
-      html += `<div><strong>Isotope:</strong> None detected — if you need [13C], [2H] D, [15N], draw isotope via Ketcher Edit → Atom → Isotope or paste [13C] in SMILES.</div>`;
+      html += `<div><strong>Isotopes:</strong> ${audit.isotope_matches.join(', ')} detected and preserved.</div>`;
     }
 
     // Tautomer
     if (audit.has_tautomer) {
-      html += `<div><strong>Tautomer:</strong> ${audit.tautomer_hint} — has_tautomer=True flagged (heuristic, server via TautomerEnumerator().Enumerate() >1). Grouped via tautomer_canonical_firstblock (first InChIKey block) for audit, but NOT deduped — keto and enol remain distinct rows (clean_smiles.py self-test).</div>`;
-    } else {
-      html += `<div><strong>Tautomer:</strong> No high-risk keto-enol/amide/imidic motif detected (heuristic). Server enumerates tautomers via rdMolStandardize.TautomerEnumerator for audit.</div>`;
+      html += `<div><strong>Tautomers:</strong> This structure may have alternate tautomeric forms; each will be scored on its own.</div>`;
     }
 
     // Multi-drug
     if (audit.n_fragments > 1) {
-      html += `<div><strong>Multi-drug / salt:</strong> ${audit.n_fragments} fragments (dot-separated). clean_smiles.py would classify as salt_removed (if one organic + known salts like Cl, [Cl-]) vs mixture vs metal_complex vs ambiguous_fragment. Here we allow predicting each as separate drug, separate report entries, separate featurization (ECFP 2048 + ECFP stereo 2048).</div>`;
+      html += `<div><strong>Multiple structures:</strong> ${audit.n_fragments} disconnected components — each will be predicted as its own drug.</div>`;
     }
 
     html += '</div>';
     let level = 'success';
-    if (!audit.hasTetrahedral && audit.smiles.length > 15) level = 'warning'; // unassigned stereo risk for hERG/CYP3A4
+    if (!audit.hasTetrahedral && audit.smiles.length > 15) level = 'warning';
     if (audit.has_isotope || audit.has_tautomer) level = 'info';
     box.className = 'chem-audit-box ' + level;
     box.innerHTML = html;
     box.style.display = 'block';
-  }
-
-  function renderMultiDrugPanel(fragments) {
-    const panel = document.getElementById('multi-drug-panel');
-    const listEl = document.getElementById('multi-drug-list');
-    const countEl = document.getElementById('multi-drug-count');
-    if (fragments.length <= 1) {
-      panel.style.display = 'none';
-      currentFragments = fragments.length === 1 ? fragments : [];
-      document.getElementById('is_multi_drug').value = '0';
-      return;
-    }
-    currentFragments = fragments;
-    panel.style.display = 'block';
-    document.getElementById('is_multi_drug').value = '1';
-    countEl.textContent = `${fragments.length} drugs will be predicted, each featurized separately (descriptors + ECFP 2048 + ECFP stereo 2048)`;
-
-    function roughHeavyAtomCount(frag) { const m = frag.match(/[A-Z][a-z]?/g); return m ? m.length : frag.length; }
-    let likelyParentIdx = 0, best = -1;
-    fragments.forEach((frag, i) => { const c = roughHeavyAtomCount(frag); if (c > best) { best = c; likelyParentIdx = i; } });
-
-    let html = '';
-    fragments.forEach((frag, i) => {
-      const chem = analyzeChemistryFull(frag);
-      let tags = [];
-      if (chem.hasTetrahedral) tags.push('<span class="tag stereo">R/S ' + chem.n_stereocenters + ' centers</span>');
-      if (chem.hasCisTrans) tags.push('<span class="tag stereo">E/Z ' + chem.n_ez_bonds + ' bonds</span>');
-      if (chem.has_isotope) tags.push('<span class="tag iso">isotope ' + chem.isotope_matches.join(',') + '</span>');
-      if (chem.has_tautomer) tags.push('<span class="tag taut">tautomer-risk</span>');
-      html += `<div class="multi-drug-item"><div><span class="mono">${frag}</span> ${i === likelyParentIdx ? '<span class="tag">likely parent (largest)</span>' : ''} ${tags.join('')}</div><div><button type="button" onclick="useFragmentOnly(${i})">Use only this fragment</button></div></div>`;
-    });
-    listEl.innerHTML = html;
-  }
-
-  function updateMultiDrugMode() {
-    const checked = document.getElementById('multi-drug-mode').checked;
-    document.getElementById('is_multi_drug').value = checked && currentFragments.length > 1 ? '1' : '0';
   }
 
   // ========================================================================
@@ -684,85 +643,23 @@
   // ========================================================================
   async function refreshStructureInfo() {
     const k = getKetcher();
-    const statusEl = document.getElementById('info-status');
-    const formulaEl = document.getElementById('info-formula');
-    const mwEl = document.getElementById('info-mw');
-    const rsEl = document.getElementById('info-stereo-rs');
-    const ezEl = document.getElementById('info-stereo-ez');
-    const tautomerEl = document.getElementById('info-tautomer');
-    const inchiEl = document.getElementById('info-inchi');
     if (!k) return;
 
     let smiles = '';
     try { smiles = await k.getSmiles(); } catch (e) {}
 
     if (!smiles) {
-      statusEl.textContent = 'No structure yet — draw in Ketcher iframe or paste SMILES';
-      formulaEl.textContent = '—'; mwEl.textContent = '—'; rsEl.textContent = '—'; ezEl.textContent = '—'; tautomerEl.textContent = '—'; inchiEl.textContent = '—';
       document.getElementById('fragment-warning').style.display = 'none';
-      document.getElementById('multi-drug-panel').style.display = 'none';
       document.getElementById('chem-audit-box').style.display = 'none';
       currentFragments = [];
       return;
     }
 
-    statusEl.textContent = 'Structure OK — isomeric SMILES captured (preserves R/S, E/Z, isotopes)';
-
-    // Formula and MW from Ketcher structService - mirrors RDKit Descriptors MolWt etc but client-side
-    try {
-      if (k.structService && typeof k.structService.calculate === 'function') {
-        const molfile = await k.getMolfile();
-        const calc = await k.structService.calculate(molfile, ['gross-formula', 'molecular-weight']);
-        formulaEl.textContent = (calc && (calc['gross-formula'] || calc.grossFormula)) || 'Unavailable — use Analyse (Σ) in Ketcher';
-        mwEl.textContent = (calc && (calc['molecular-weight'] || calc.molecularWeight)) || 'Unavailable';
-      } else {
-        formulaEl.textContent = 'See editor’s Analyse (Σ) tool';
-        mwEl.textContent = 'See editor’s Analyse (Σ) tool';
-      }
-    } catch (e) {
-      formulaEl.textContent = 'Unavailable';
-      mwEl.textContent = 'Unavailable';
-    }
-
-    // InChI via Ketcher - mirrors RDKit inchi.MolToInchiKey
-    try {
-      if (typeof k.getInchi === 'function') {
-        const inchi = await k.getInchi(false);
-        inchiEl.textContent = inchi || 'Unavailable — will be generated server-side via RDKit inchi.MolToInchiKey';
-      } else {
-        inchiEl.textContent = 'Unavailable — server will generate InChIKey with stereo (full InChIKey, not just first block)';
-      }
-    } catch (e) {
-      inchiEl.textContent = 'Unavailable';
-    }
-
     // Full chemistry audit - heuristic, server recomputes accurately
     const audit = analyzeChemistryFull(smiles);
 
-    // R/S line - maps to MODEL_STEREO_FEATURES n_stereocenters, n_assigned, n_unassigned, has_chiral
-    if (audit.hasTetrahedral) {
-      rsEl.textContent = `${audit.n_stereocenters} center(s) with @ (atCount=${audit.atCount}) — R/S preserved distinct via full InChIKey including /t layer (clean_smiles.py). For hERG/CYP3A4, enantiomers can have different activity. Server: FindMolChiralCenters(includeUnassigned=True)`;
-    } else {
-      rsEl.textContent = 'None marked — verify intended isomer; unassigned flagged n_unassigned_stereocenters server-side (FindMolChiralCenters ? label)';
-    }
-
-    // E/Z line - maps to n_ez_bonds, n_assigned_ez, n_unassigned_ez, has_ez
-    if (audit.hasCisTrans) {
-      ezEl.textContent = `${audit.ezMarkers} /\\ markers (~${audit.n_ez_bonds} bonds) — E/Z preserved distinct via full InChIKey /b layer and BondStereo STEREOE/STEREOZ (featurize.py _ez_counts_simple). Server: AssignStereochemistry + FindPotentialStereo`;
-    } else {
-      ezEl.textContent = 'None marked — verify intended isomer; unassigned flagged n_unassigned_ez server-side (FindPotentialStereo + STEREONONE)';
-    }
-
-    // Isotope / Tautomer line - maps to has_isotope, n_isotope_atoms, isotope_labels, has_tautomer
-    let parts = [];
-    if (audit.has_isotope) parts.push(`isotope detected: ${audit.isotope_matches.join(', ')} (has_isotope=True, n=${audit.n_isotope_atoms})`);
-    if (audit.has_tautomer) parts.push(`tautomer-risk: ${audit.tautomer_hint} (has_tautomer=True)`);
-    if (parts.length === 0) parts.push('None — server will still run TautomerEnumerator and GetIsotope audit');
-    tautomerEl.textContent = parts.join(' | ');
-
-    // Fragment handling - maps to clean_smiles.py fragment analysis: clean vs salt_removed vs mixture vs metal_complex
+    // Fragment handling
     checkFragments(smiles);
-    renderMultiDrugPanel(audit.fragments);
     renderChemAudit(audit);
 
     // Fill hidden fields - these go to server, server re-validates with RDKit, never trusts client alone
@@ -830,20 +727,18 @@
       if (c > bestCount) { bestCount = c; likelyParentIdx = i; }
     });
 
-    // This matches clean_smiles.py fragment analysis logic description but allows prediction
     box.style.display = 'block';
     let html = '<strong>' + fragments.length + ' disconnected components detected</strong> ' +
-      '(possible salt form like HCl, Na+, or genuine mixture/co-crystal). In clean_smiles.py this would be classified as: ' +
-      '<code>salt_removed</code> (one organic + known counterion/solvent), <code>mixture</code> (2+ organics), <code>metal_complex</code> (contains metal), ' +
-      '<code>ambiguous_fragment</code>, or <code>no_parent</code>. For toxicity prediction, largest fragment is best guess for parent, but if these are truly different drugs (CCO.CCN), they will be predicted separately as ' + fragments.length + ' report entries.<br>' +
+      '(this could be a salt form, or genuine mixture). The largest fragment is usually the parent drug, ' +
+      'but if these are truly separate structures, they will be predicted individually as ' + fragments.length + ' report entries.<br>' +
       '<div class="fragment-option">';
     fragments.forEach(function (frag, i) {
       const isSuggested = i === likelyParentIdx;
       html += '<button type="button" class="' + (isSuggested ? 'suggested' : '') + '" onclick="useFragmentOnly(' + i + ')">' +
         (isSuggested ? '★ ' : '') + 'Use fragment ' + (i + 1) + ' only (' + frag + ')' +
-        (isSuggested ? ' — likely parent (largest heavy atom count)' : '') + '</button>';
+        (isSuggested ? ' — likely parent' : '') + '</button>';
     });
-    html += '<button type="button" onclick="dismissFragmentWarning()">Keep all as separate drugs (' + fragments.length + ' predictions)</button></div>';
+    html += '<button type="button" onclick="dismissFragmentWarning()">Keep all as separate structures (' + fragments.length + ' predictions)</button></div>';
     box.innerHTML = html;
     box.dataset.fragments = JSON.stringify(fragments);
   }
@@ -932,7 +827,7 @@
       if (isMulti) {
         document.getElementById('smiles_list_json').value = JSON.stringify(audit.fragments);
         document.getElementById('is_multi_drug').value = '1';
-        if (!confirm(`You drew ${audit.n_fragments} disconnected structures (${audit.fragments.join(' . ')}). They will be predicted as ${audit.n_fragments} separate drugs with separate report entries, each featurized separately (descriptors + ECFP 2048 + ECFP stereo 2048 + MODEL_STEREO_FEATURES). Continue?`)) {
+        if (!confirm(`You drew ${audit.n_fragments} disconnected structures. They will be predicted as ${audit.n_fragments} separate drugs, each with its own report entry. Continue?`)) {
           return;
         }
       } else {

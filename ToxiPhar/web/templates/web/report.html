@@ -81,15 +81,14 @@
   {% for item in results %}
     <div class="card">
       <p class="drug-name">
-        {% if meta and meta.brand_name %}{{ meta.brand_name }}{% if is_multi_drug %} <span style="font-weight:400; font-size:0.85rem; color:#6b7280;">— Drug {{ forloop.counter }}</span>{% endif %}
-        {% elif item.report and item.report.brand_name %}{{ item.report.brand_name }}
+        {% if item.brand_name %}{{ item.brand_name }}{% if is_multi_drug %} <span style="font-weight:400; font-size:0.85rem; color:#6b7280;">— Drug {{ forloop.counter }}</span>{% endif %}
         {% else %}Compound {{ forloop.counter }}{% endif %}
       </p>
-      {% if meta.generic_name or meta.chemical_name %}
+      {% if item.generic_name or item.chemical_name %}
         <p class="drug-sub">
-          {% if meta.generic_name %}Generic: <strong style="color:#111;">{{ meta.generic_name }}</strong>{% endif %}
-          {% if meta.generic_name and meta.chemical_name %} · {% endif %}
-          {% if meta.chemical_name %}Chemical: <strong style="color:#111;">{{ meta.chemical_name }}</strong>{% endif %}
+          {% if item.generic_name %}Generic: <strong style="color:#111;">{{ item.generic_name }}</strong>{% endif %}
+          {% if item.generic_name and item.chemical_name %} · {% endif %}
+          {% if item.chemical_name %}Chemical: <strong style="color:#111;">{{ item.chemical_name }}</strong>{% endif %}
         </p>
       {% endif %}
 
@@ -121,20 +120,19 @@
 {% elif result %}
   <div class="card">
     <p class="drug-name">
-      {% if meta and meta.brand_name %}{{ meta.brand_name }}
-      {% elif report and report.brand_name %}{{ report.brand_name }}
+      {% if brand_name %}{{ brand_name }}
       {% else %}Predicted compound{% endif %}
     </p>
-    {% if meta.generic_name or meta.chemical_name %}
+    {% if generic_name or chemical_name %}
       <p class="drug-sub">
-        {% if meta.generic_name %}Generic: <strong style="color:#111;">{{ meta.generic_name }}</strong> · {% endif %}
-        {% if meta.chemical_name %}Chemical: <strong style="color:#111;">{{ meta.chemical_name }}</strong>{% endif %}
+        {% if generic_name %}Generic: <strong style="color:#111;">{{ generic_name }}</strong> · {% endif %}
+        {% if chemical_name %}Chemical: <strong style="color:#111;">{{ chemical_name }}</strong>{% endif %}
       </p>
     {% endif %}
 
     <div style="margin-top:12px;">
       <div style="font-size:0.75rem; color:#6b7280; margin-bottom:4px; font-weight:600;">SMILES</div>
-      <div class="mono">{{ result.smiles_input|default:smiles|default:meta.smiles }}</div>
+      <div class="mono">{{ smiles|default:meta.smiles }}</div>
     </div>
 
     <div style="margin-top:16px;">
