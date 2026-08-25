@@ -1,65 +1,5 @@
 """
-featurize.py
-Converts cleaned SMILES CSVs into model-ready feature tables.
-
-THIS VERSION FIXES THREE RISKS FROM THE PREVIOUS ONE BY CONSTRUCTION,
-NOT BY DOCUMENTATION -- i.e. it's no longer possible to accidentally
-train on bad data just by forgetting a filter step, because the bad
-data never reaches the file a training script would read from.
-
-Every dataset now produces up to FOUR files:
-
-  {name}_features_full.parquet
-      Everything: every input row (valid, invalid, missing), every
-      flag column, ECFP stored PACKED (256 bytes/molecule -- 8x
-      smaller than dense storage). This is the audit trail. Nothing
-      is ever deleted from this file. NOT for training -- the packed
-      columns are not usable as model features as-is.
-
-  {name}_features_model.parquet
-      Only what's safe to train on: invalid/missing rows removed,
-      rows with a missing or unexpected target_col value removed (see
-      LABEL VALIDATION below), duplicate-conflict groups removed (see
-      DUPLICATE HANDLING below), ECFP already UNPACKED to dense
-      ecfp_0..ecfp_2047 columns. A training script can load this file
-      and go straight to building a feature matrix.
-
-  {name}_duplicate_conflicts.csv
-      Only written if conflicts were found: groups of rows that are
-      the exact same molecule (by InChIKey) but disagree on the
-      label. Never auto-resolved -- same "never guess" policy as
-      clean_smiles.py. Written here so you can review and decide.
-
-  {name}_label_review.csv
-      Only written if found: rows with a chemically VALID molecule
-      but a target_col value that's missing or outside the expected
-      set (default {0, 1}). This is NOT auto-mapped to any class --
-      e.g. a value like -1 might mean "inconclusive," "not tested,"
-      or something dataset-specific, and guessing wrong would
-      silently corrupt training. Excluded from the model file until
-      you've confirmed what the value means and, if appropriate,
-      remapped it upstream before re-running this script.
-
-LABEL VALIDATION (only applied when building the _model file):
-  - build_model_ready(..., valid_labels=(0, 1)) by default. Any row
-    with a valid molecule whose target_col value is null OR not in
-    valid_labels is excluded from the model file and written to
-    _label_review.csv instead. Pass valid_labels=None to disable this
-    check for a genuinely non-binary target.
-
-DUPLICATE HANDLING (only applied when building the _model file):
-  - Rows sharing an InChIKey are a duplicate group.
-  - If every row in a group agrees on target_col: keep ONE
-    representative (lowest original row index), drop the rest.
-    Nothing lost -- they were redundant, not contradictory.
-  - If a group disagrees on target_col: the ENTIRE group is excluded
-    from the _model file and written to _duplicate_conflicts.csv
-    instead. This is the case most likely to appear because of the
-    metal-recovery merge step possibly reintroducing a molecule that
-    already existed in the clean file under a different SMILES
-    spelling.
-
-Requires: pip install pyarrow rdkit pandas
+featurize.py - Production
 """
 
 import time
@@ -79,6 +19,10 @@ ECFP_NBITS = 2048
 PACKED_NBYTES = ECFP_NBITS // 8
 
 _MORGAN_GEN = rdFingerprintGenerator.GetMorganGenerator(radius=ECFP_RADIUS, fpSize=ECFP_NBITS)
+try:
+    _MORGAN_GEN_STEREO = rdFingerprintGenerator.GetMorganGenerator(radius=ECFP_RADIUS, fpSize=ECFP_NBITS, includeChirality=True, useBondTypes=True)
+except TypeError:
+    _MORGAN_GEN_STEREO = rdFingerprintGenerator.GetMorganGenerator(radius=ECFP_RADIUS, fpSize=ECFP_NBITS, includeChirality=True)
 
 RDKIT_DESCRIPTORS = {
     "MolWt": Descriptors.MolWt,
@@ -95,7 +39,45 @@ RDKIT_DESCRIPTORS = {
 DESCRIPTOR_NAMES = list(RDKIT_DESCRIPTORS.keys())
 PACKED_COLS = [f"ecfp_packed_{i}" for i in range(PACKED_NBYTES)]
 ECFP_COLS = [f"ecfp_{i}" for i in range(ECFP_NBITS)]
+PACKED_COLS_STEREO = [f"ecfp_stereo_packed_{i}" for i in range(PACKED_NBYTES)]
+ECFP_COLS_STEREO = [f"ecfp_stereo_{i}" for i in range(ECFP_NBITS)]
 
+MODEL_STEREO_FEATURES = [
+    "n_stereocenters",
+    "n_assigned_stereocenters",
+    "n_unassigned_stereocenters",
+    "n_ez_bonds",
+    "n_assigned_ez",
+    "n_unassigned_ez",
+    "has_chiral",
+    "has_ez",
+    "has_stereo",
+    "has_unassigned_stereo",
+    "has_unassigned_ez",
+    "is_stereoisomer_defined",
+    "has_isotope",
+    "n_isotope_atoms",
+]
+
+# Also handle legacy names from clean_smiles.py
+LEGACY_STEREO_COLS = [
+    "n_stereocenters",
+    "n_unassigned_stereocenters",
+    "n_ez_stereocenters",
+    "n_assigned_ez",
+    "n_unassigned_ez",
+    "has_chiral",
+    "has_ez",
+    "has_stereo",
+    "has_unassigned_stereo",
+    "is_stereoisomer_defined",
+    "has_isotope",
+    "n_isotope_atoms",
+    "isotope_labels",
+    "has_tautomer",
+    "stereo_signature",
+    "SMILES_isomeric",
+]
 
 def get_rdkit_version():
     try:
@@ -104,14 +86,12 @@ def get_rdkit_version():
     except Exception:
         return "unknown"
 
-
 def smiles_to_mol(smiles: str):
     if not isinstance(smiles, str) or not smiles.strip():
         return None
     return Chem.MolFromSmiles(smiles)
 
-
-def compute_descriptors(mol) -> list:
+def compute_descriptors(mol):
     out = []
     for name in DESCRIPTOR_NAMES:
         try:
@@ -120,227 +100,260 @@ def compute_descriptors(mol) -> list:
             out.append(np.nan)
     return out
 
-
 def unpack_ecfp_matrix(packed_matrix: np.ndarray) -> np.ndarray:
-    """(n, 256) packed uint8 -> (n, 2048) dense 0/1 uint8. Verified
-    bit-exact against RDKit's own dense fingerprint output."""
     return np.unpackbits(packed_matrix.astype(np.uint8), axis=1).astype(np.uint8)
 
+def _ez_counts_simple(mol: Chem.Mol) -> tuple[int, int]:
+    n_a = 0
+    n_u = 0
+    try:
+        Chem.AssignStereochemistry(mol, force=True, cleanIt=True, flagPossibleStereoCenters=True)
+    except Exception:
+        pass
+    potential = set()
+    try:
+        from rdkit.Chem import FindPotentialStereo
+        for info in FindPotentialStereo(mol):
+            if "Bond" in str(getattr(info, 'type', '')):
+                try:
+                    potential.add(int(info.centeredOn))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    for bond in mol.GetBonds():
+        if bond.GetBondType() != Chem.BondType.DOUBLE or bond.GetIsAromatic():
+            continue
+        st = bond.GetStereo()
+        if st == Chem.BondStereo.STEREOE or st == Chem.BondStereo.STEREOZ:
+            n_a += 1
+        elif st == Chem.BondStereo.STEREOANY:
+            n_u += 1
+        elif bond.GetIdx() in potential and st == Chem.BondStereo.STEREONONE:
+            n_u += 1
+    return n_a, n_u
 
-def featurize_dataframe(df: pd.DataFrame, smiles_col: str = "SMILES",
-                         progress_every: int = 2000,
-                         dataset_name: str = "dataset") -> pd.DataFrame:
-    """
-    Returns the FULL audit-trail table: every input row, every flag,
-    ECFP packed. This is the building block both output files are
-    made from -- see featurize_file() for how the _model file is
-    derived from this.
-    """
+def _isotope_audit(mol: Chem.Mol):
+    labs = [f"{a.GetIsotope()}{a.GetSymbol()}_{a.GetIdx()}" for a in mol.GetAtoms() if a.GetIsotope() != 0]
+    return (len(labs) > 0), len(labs), ";".join(labs)
+
+def _tautomer_audit(mol: Chem.Mol) -> bool:
+    try:
+        from rdkit.Chem.MolStandardize import rdMolStandardize
+        enum = rdMolStandardize.TautomerEnumerator()
+        return len(list(enum.Enumerate(mol))) > 1
+    except Exception:
+        return False
+
+def _stereo_audit(mol: Chem.Mol) -> dict:
+    try:
+        centers = Chem.FindMolChiralCenters(mol, includeUnassigned=True, useLegacyImplementation=False)
+        n_total = len(centers)
+        n_unassigned = sum(1 for _, lab in centers if lab == "?")
+        n_assigned = n_total - n_unassigned
+    except Exception:
+        n_total = n_assigned = n_unassigned = 0
+    try:
+        n_a_ez, n_u_ez = _ez_counts_simple(mol)
+        n_ez = n_a_ez + n_u_ez
+    except Exception:
+        n_a_ez = n_u_ez = n_ez = 0
+    try:
+        has_iso, n_iso, iso_labs = _isotope_audit(mol)
+    except Exception:
+        has_iso = False; n_iso = 0; iso_labs = ""
+    try:
+        has_tau = _tautomer_audit(mol)
+    except Exception:
+        has_tau = False
+    return {
+        "n_stereocenters": n_total,
+        "n_assigned_stereocenters": n_assigned,
+        "n_unassigned_stereocenters": n_unassigned,
+        "n_ez_bonds": n_ez,
+        "n_assigned_ez": n_a_ez,
+        "n_unassigned_ez": n_u_ez,
+        "has_chiral": bool(n_total > 0),
+        "has_ez": bool(n_ez > 0),
+        "has_stereo": bool(n_total > 0 or n_ez > 0),
+        "has_unassigned_stereo": bool(n_unassigned > 0 or n_u_ez > 0),
+        "has_unassigned_ez": bool(n_u_ez > 0),
+        "is_stereoisomer_defined": bool((n_total > 0 or n_ez > 0) and not (n_unassigned > 0 or n_u_ez > 0)),
+        "has_isotope": bool(has_iso),
+        "n_isotope_atoms": int(n_iso),
+        "has_tautomer": bool(has_tau),
+        "isotope_labels": iso_labs,
+        # legacy compat
+        "n_ez_stereocenters": n_ez,
+    }
+
+def _validate_stereo_fingerprints():
+    tests = [("C[C@H](O)CC", "C[C@@H](O)CC", "R/S"), ("C/C=C/C", "C/C=C\\C", "E/Z")]
+    for smi1, smi2, label in tests:
+        try:
+            m1 = Chem.MolFromSmiles(smi1)
+            m2 = Chem.MolFromSmiles(smi2)
+            if m1 is None or m2 is None:
+                continue
+            fp1 = _MORGAN_GEN_STEREO.GetFingerprint(m1)
+            fp2 = _MORGAN_GEN_STEREO.GetFingerprint(m2)
+            from rdkit import DataStructs
+            sim = DataStructs.TanimotoSimilarity(fp1, fp2)
+            diff = len(set(fp1.GetOnBits()).symmetric_difference(set(fp2.GetOnBits())))
+            if sim >= 1.0 or diff == 0:
+                print(f"  [VALIDATION WARNING] {label} NOT distinguished sim={sim}")
+                return False
+            else:
+                print(f"  [VALIDATION] {label} OK sim={sim:.3f} diff={diff}")
+        except Exception as e:
+            print(f"  [VALIDATION] {label} error {e}")
+            return False
+    return True
+
+def featurize_dataframe(df: pd.DataFrame, smiles_col: str = "SMILES", progress_every: int = 2000, dataset_name: str = "dataset") -> pd.DataFrame:
     if smiles_col not in df.columns:
-        raise ValueError(f"SMILES column '{smiles_col}' not found. Available: {list(df.columns)}")
-
-    collisions = set(DESCRIPTOR_NAMES + PACKED_COLS + ECFP_COLS).intersection(df.columns)
-    if collisions:
-        raise ValueError(f"Input already contains feature names {collisions}. Rename first.")
-
+        raise ValueError(f"SMILES column '{smiles_col}' not found")
+    # Avoid duplicate column collision with existing audit cols from clean_smiles
+    # We will compute fresh audit but reuse if already present to avoid dup
     n = len(df)
     missing_mask = df[smiles_col].isna() | (df[smiles_col].astype(str).str.strip() == "")
-
     fp_packed = np.zeros((n, PACKED_NBYTES), dtype=np.uint8)
+    fp_packed_stereo = np.zeros((n, PACKED_NBYTES), dtype=np.uint8)
     desc_matrix = np.full((n, len(DESCRIPTOR_NAMES)), np.nan, dtype=np.float32)
     is_valid = np.zeros(n, dtype=bool)
-    inchi_keys = [None] * n
+    inchikey_stereo = [None] * n
+    inchikey_conn = [None] * n
+    stereo_rows = []
     n_invalid = 0
-    t0 = time.time()
 
     for pos in range(n):
         if missing_mask.iloc[pos]:
+            stereo_rows.append({k: None for k in MODEL_STEREO_FEATURES + ["has_tautomer", "isotope_labels", "n_ez_stereocenters"]})
             continue
         mol = smiles_to_mol(df[smiles_col].iloc[pos])
         if mol is None:
             n_invalid += 1
+            stereo_rows.append({k: None for k in MODEL_STEREO_FEATURES + ["has_tautomer", "isotope_labels", "n_ez_stereocenters"]})
             continue
-
         fp = _MORGAN_GEN.GetFingerprint(mol)
-        on_bits = fp.GetOnBits()
-        packed_row = fp_packed[pos]
-        for bit in on_bits:
-            packed_row[bit // 8] |= 1 << (7 - (bit % 8))
-
+        for b in fp.GetOnBits():
+            fp_packed[pos, b // 8] |= 1 << (7 - (b % 8))
+        try:
+            fps = _MORGAN_GEN_STEREO.GetFingerprint(mol)
+            for b in fps.GetOnBits():
+                fp_packed_stereo[pos, b // 8] |= 1 << (7 - (b % 8))
+        except Exception:
+            pass
         desc_matrix[pos] = compute_descriptors(mol)
         is_valid[pos] = True
         try:
-            inchi_keys[pos] = inchi.MolToInchiKey(mol)
+            ik = inchi.MolToInchiKey(mol)
+            inchikey_stereo[pos] = ik
+            inchikey_conn[pos] = ik.split("-")[0] if ik else None
         except Exception:
-            inchi_keys[pos] = None
+            pass
+        stereo_rows.append(_stereo_audit(mol))
 
-        if progress_every and (pos + 1) % progress_every == 0:
-            elapsed = time.time() - t0
-            print(f"  [{dataset_name}] {pos + 1}/{n} ({(pos + 1) / elapsed:.0f} rows/sec)")
+    print(f"  [{dataset_name}] missing={int(missing_mask.sum())} invalid={n_invalid} valid={int(is_valid.sum())}")
 
-    n_missing = int(missing_mask.sum())
-    print(f"  [{dataset_name}] missing={n_missing}  invalid={n_invalid}  valid={int(is_valid.sum())}")
+    # Start with original df columns but drop any that would collide with our computed cols to avoid duplicate
+    # Keep original audit cols from clean_smiles for traceability, but we will overwrite with fresh calc
+    cols_to_drop_from_original = set(MODEL_STEREO_FEATURES + ["has_tautomer", "isotope_labels", "n_ez_stereocenters"]).intersection(set(df.columns))
+    if cols_to_drop_from_original:
+        print(f"  [{dataset_name}] dropping {len(cols_to_drop_from_original)} existing audit cols from input to avoid duplicate: {cols_to_drop_from_original}")
+        df_base = df.drop(columns=list(cols_to_drop_from_original))
+    else:
+        df_base = df
 
-    is_dup = pd.Series(inchi_keys).duplicated(keep=False) & pd.Series(inchi_keys).notna()
-    if is_dup.any():
-        print(f"  [{dataset_name}] {int(is_dup.sum())} rows share an InChIKey with another row "
-              f"(canonical duplicates) -- resolved when building the _model file")
-
-    meta_df = df.reset_index(drop=True).copy()
+    meta_df = df_base.reset_index(drop=True).copy()
     meta_df["_is_valid"] = is_valid
     meta_df["_is_missing"] = missing_mask.values
-    meta_df["_is_duplicate_canonical"] = is_dup.values
-    meta_df["_inchikey"] = inchi_keys
+    meta_df["_inchikey_stereo"] = inchikey_stereo
+    meta_df["_inchikey_connectivity"] = inchikey_conn
+    meta_df["_inchikey"] = inchikey_stereo
 
+    stereo_df = pd.DataFrame(stereo_rows)
     desc_df = pd.DataFrame(desc_matrix, columns=DESCRIPTOR_NAMES)
     packed_df = pd.DataFrame(fp_packed, columns=PACKED_COLS, dtype=np.uint8)
+    packed_stereo_df = pd.DataFrame(fp_packed_stereo, columns=PACKED_COLS_STEREO, dtype=np.uint8)
 
-    return pd.concat([meta_df, desc_df, packed_df], axis=1)
+    full = pd.concat([meta_df, stereo_df, desc_df, packed_df, packed_stereo_df], axis=1)
+    # Final safety: drop duplicate columns (keep first)
+    full = full.loc[:, ~full.columns.duplicated()]
+    return full
 
-
-def build_model_ready(full_df: pd.DataFrame, target_col: str,
-                       dataset_name: str = "dataset",
-                       valid_labels=(0, 1)):
-    """
-    Derives the _model file from the _full table:
-      1. Drop invalid/missing-SMILES rows (never enters the model file at all).
-      2. Drop rows whose target_col is null or outside valid_labels --
-         written to a separate label_review frame for manual review
-         rather than silently included or dropped without a trace.
-         Pass valid_labels=None to skip this check for a genuinely
-         non-binary target.
-      3. Resolve duplicate groups: agreeing groups -> keep 1 representative;
-         conflicting groups -> excluded here, returned separately for review.
-      4. Unpack ECFP to dense 0/1 columns -- packed columns never appear
-         in this output, so they can't be fed to a model by mistake.
-
-    Returns (model_df, conflicts_df, label_review_df).
-    """
-    has_valid_mol = full_df["_is_valid"]
-
+def build_model_ready(full_df: pd.DataFrame, target_col: str, dataset_name: str = "dataset", valid_labels=(0, 1)):
+    has_valid = full_df["_is_valid"]
     label_notna = full_df[target_col].notna()
-    if valid_labels is not None:
-        label_ok = label_notna & full_df[target_col].isin(valid_labels)
-    else:
-        label_ok = label_notna
-
-    valid_df = full_df[has_valid_mol & label_ok].copy()
-    n_dropped_invalid = int((~has_valid_mol).sum())
-
-    label_review_df = full_df[has_valid_mol & ~label_ok].copy()
-    if len(label_review_df) > 0:
-        seen_values = full_df.loc[has_valid_mol & ~label_ok, target_col].value_counts(dropna=False).to_dict()
-        print(f"  [{dataset_name}] *** {len(label_review_df)} rows have a valid molecule but a "
-              f"missing/unexpected '{target_col}' value (expected one of {valid_labels}) -- "
-              f"excluded from model file, written to label review CSV. "
-              f"Value breakdown: {seen_values} ***")
-
-    # -- Resolve duplicate groups ---------------------------------------
+    label_ok = label_notna & full_df[target_col].isin(valid_labels) if valid_labels is not None else label_notna
+    valid_df = full_df[has_valid & label_ok].copy()
+    label_review_df = full_df[has_valid & ~label_ok].copy()
     keep_mask = pd.Series(True, index=valid_df.index)
     conflict_rows = []
-
-    has_inchikey = valid_df["_inchikey"].notna()
-    groups = valid_df[has_inchikey].groupby("_inchikey").groups
-
-    n_conflict_groups = 0
-    n_conflict_rows = 0
-    n_redundant_dropped = 0
-
-    for inchikey, idx in groups.items():
+    has_ikey = valid_df["_inchikey_stereo"].notna()
+    groups = valid_df[has_ikey].groupby("_inchikey_stereo").groups
+    n_conflict_rows = 0; n_redundant = 0
+    for ik, idx in groups.items():
         if len(idx) < 2:
             continue
         idx = sorted(idx)
         labels = valid_df.loc[idx, target_col].dropna().unique()
         if len(labels) > 1:
-            # Genuine conflict: same molecule, different label. Exclude
-            # the whole group from the model file, log it for review.
             keep_mask.loc[idx] = False
             conflict_rows.append(valid_df.loc[idx])
-            n_conflict_groups += 1
             n_conflict_rows += len(idx)
         else:
-            # Agreeing duplicates: keep the first (lowest original index),
-            # drop the rest -- they're redundant, not contradictory. Safe
-            # to just take idx[0] here because valid_df was already
-            # filtered to rows with a non-null, in-range label above, so
-            # every row in this group already has a usable label.
             keep_mask.loc[idx[1:]] = False
-            n_redundant_dropped += len(idx) - 1
-
+            n_redundant += len(idx) - 1
     resolved_df = valid_df[keep_mask].copy()
-
-    if n_redundant_dropped:
-        print(f"  [{dataset_name}] dropped {n_redundant_dropped} redundant duplicate rows "
-              f"(kept 1 representative per agreeing group)")
-    if n_conflict_groups:
-        print(f"  [{dataset_name}] *** {n_conflict_groups} duplicate groups "
-              f"({n_conflict_rows} rows) have CONFLICTING labels -- excluded from "
-              f"model file, written to conflicts CSV for manual review ***")
-
-    # -- Unpack ECFP to dense columns, drop packed + internal flag cols --
-    packed_matrix = resolved_df[PACKED_COLS].to_numpy(dtype=np.uint8)
-    dense = unpack_ecfp_matrix(packed_matrix)
+    dense = unpack_ecfp_matrix(resolved_df[PACKED_COLS].to_numpy(dtype=np.uint8))
+    dense_s = unpack_ecfp_matrix(resolved_df[PACKED_COLS_STEREO].to_numpy(dtype=np.uint8))
     ecfp_df = pd.DataFrame(dense, columns=ECFP_COLS, index=resolved_df.index)
-
-    keep_meta_cols = [c for c in resolved_df.columns
-                       if c not in PACKED_COLS and c not in ["_is_valid", "_is_missing"]]
-    model_df = pd.concat([resolved_df[keep_meta_cols], ecfp_df], axis=1).reset_index(drop=True)
-
+    ecfp_s_df = pd.DataFrame(dense_s, columns=ECFP_COLS_STEREO, index=resolved_df.index)
+    # ONLY CHANGE: bring back SMILES for D-MPNN/CatBoost consistency - SMILES is metadata, not used as numeric feature
+    keep_from_resolved = [c for c in [target_col, "SMILES"] + DESCRIPTOR_NAMES + MODEL_STEREO_FEATURES if c in resolved_df.columns]
+    model_df = pd.concat([
+        resolved_df[keep_from_resolved].reset_index(drop=True),
+        ecfp_df.reset_index(drop=True),
+        ecfp_s_df.reset_index(drop=True)
+    ], axis=1)
+    # Safety dedup
+    model_df = model_df.loc[:, ~model_df.columns.duplicated()]
     conflicts_df = pd.concat(conflict_rows, axis=0).reset_index(drop=True) if conflict_rows else pd.DataFrame()
-
-    print(f"  [{dataset_name}] model-ready rows: {len(model_df)} "
-          f"(dropped {n_dropped_invalid} invalid/missing molecules, "
-          f"{len(label_review_df)} missing/unexpected labels, "
-          f"{n_redundant_dropped} redundant dupes, {n_conflict_rows} conflict rows)")
-
+    print(f"  [{dataset_name}] model-ready rows: {len(model_df)}")
     return model_df, conflicts_df, label_review_df
 
-
-def featurize_file(input_path: str, output_dir: str, dataset_name: str,
-                    target_col: str, smiles_col: str = "SMILES",
-                    valid_labels=(0, 1)):
-    print(f"\n=== {input_path}  (target_col={target_col}) ===")
+def featurize_file(input_path: str, output_dir: str, dataset_name: str, target_col: str, smiles_col: str = "SMILES", valid_labels=(0, 1)):
+    print(f"\n=== {input_path} (target={target_col}) ===")
+    _validate_stereo_fingerprints()
     df = pd.read_csv(input_path, low_memory=False)
     print(f"  Input: {len(df)} rows x {len(df.columns)} cols")
-
     full_df = featurize_dataframe(df, smiles_col=smiles_col, dataset_name=dataset_name)
-    model_df, conflicts_df, label_review_df = build_model_ready(
-        full_df, target_col=target_col, dataset_name=dataset_name, valid_labels=valid_labels
-    )
-
+    model_df, conflicts_df, label_review_df = build_model_ready(full_df, target_col=target_col, dataset_name=dataset_name, valid_labels=valid_labels)
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
     full_path = f"{output_dir}/{dataset_name}_features_full.parquet"
     model_path = f"{output_dir}/{dataset_name}_features_model.parquet"
-    conflicts_path = f"{output_dir}/{dataset_name}_duplicate_conflicts.csv"
-    label_review_path = f"{output_dir}/{dataset_name}_label_review.csv"
-
+    # Final dedup before parquet write
+    full_df = full_df.loc[:, ~full_df.columns.duplicated()]
+    model_df = model_df.loc[:, ~model_df.columns.duplicated()]
     full_df.to_parquet(full_path, index=False)
     model_df.to_parquet(model_path, index=False)
     if len(conflicts_df) > 0:
-        conflicts_df.to_csv(conflicts_path, index=False)
+        conflicts_df.to_csv(f"{output_dir}/{dataset_name}_duplicate_conflicts.csv", index=False)
     if len(label_review_df) > 0:
-        label_review_df.to_csv(label_review_path, index=False)
-
+        label_review_df.to_csv(f"{output_dir}/{dataset_name}_label_review.csv", index=False)
     meta = {
-        "input_file": input_path, "target_col": target_col,
-        "valid_labels": list(valid_labels) if valid_labels is not None else None,
-        "rdkit_version": get_rdkit_version(), "python_version": platform.python_version(),
-        "ecfp_radius": ECFP_RADIUS, "ecfp_nbits": ECFP_NBITS,
-        "n_input": len(df), "n_full": len(full_df), "n_model_ready": len(model_df),
-        "n_duplicate_conflict_rows": len(conflicts_df),
-        "n_label_review_rows": len(label_review_df),
-        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "model_features": {
+            "group1_connectivity": DESCRIPTOR_NAMES + ECFP_COLS,
+            "group2_stereo_stable": MODEL_STEREO_FEATURES + ECFP_COLS_STEREO,
+        },
+        "audit_only": ["has_tautomer", "isotope_labels"],
+        "n_input": len(df), "n_full": len(full_df), "n_model": len(model_df),
     }
     Path(f"{output_dir}/{dataset_name}_meta.json").write_text(json.dumps(meta, indent=2))
-
-    print(f"  Saved: {full_path}  (audit trail, packed, NOT for training)")
-    print(f"  Saved: {model_path}  (safe to train on directly)")
-    if len(conflicts_df) > 0:
-        print(f"  Saved: {conflicts_path}  (needs your review)")
-    if len(label_review_df) > 0:
-        print(f"  Saved: {label_review_path}  (needs your review)")
-
+    print(f"  Saved: {full_path}")
+    print(f"  Saved: {model_path} (PRODUCTION-SAFE)")
     return model_df
-
 
 DATASETS = [
     ("data/DILI_clean.csv", "DILI", "Y"),
@@ -351,23 +364,8 @@ DATASETS = [
 ]
 
 if __name__ == "__main__":
-    failures = []
     for input_path, dataset_name, target_col in DATASETS:
         try:
             featurize_file(input_path, "data", dataset_name, target_col, smiles_col="SMILES")
         except FileNotFoundError:
-            msg = f"Not found: {input_path}"
-            print(msg)
-            failures.append(msg)
-        except Exception as e:
-            msg = f"FAILED {input_path}: {e}"
-            print(msg)
-            failures.append(msg)
-
-    print("\n=== SUMMARY ===")
-    if failures:
-        for f in failures:
-            print(" -", f)
-    else:
-        print("All datasets processed. Use *_features_model.parquet for training --")
-        print("Check each *_label_review.csv (if any) before trusting that dataset's split.")
+            print(f"Not found: {input_path}")

@@ -3,7 +3,7 @@
 clean_smiles.py
 ================
 
-Chemical standardization and quality-control stage for a multi-endpoint
+Conservative SMILES cleaning and structural QC stage (NOT aggressive standardization) for a multi-endpoint
 drug toxicity ML project (Ames, CYP3A4, hERG, DILI, Teratogenicity).
 
 This script does ONE job: turn raw SMILES into a conservatively cleaned,
@@ -91,6 +91,9 @@ are no stereocenters." Don't conflate the two downstream.
 
 DUPLICATE HANDLING
 -------------------
+Tautomers: grouped via tautomer_group_id (audit only), NOT automatically deduplicated.
+Duplicates remain based on full InChIKey (including stereo, isotopes), so R/S and E/Z isomers are preserved as distinct rows.
+
 Duplicate detection runs AFTER structural cleaning and is based on
 InChIKey, never on label values -- labels only ever influence which
 duplicate rows are auto-collapsible, never how a molecule is
@@ -218,17 +221,8 @@ import pandas as pd
 from rdkit import Chem, RDLogger, rdBase
 from rdkit.Chem import SaltRemover
 
-# RDKit is chatty on stderr by default (parse warnings etc.). We
-# capture failures ourselves per-row, so silence RDKit's own
-# C++-level logger and rely on our own `logging` module instead.
 RDLogger.DisableLog("rdApp.*")
-
 logger = logging.getLogger("clean_smiles")
-
-
-# =======================================================================
-# STATUS CONSTANTS
-# =======================================================================
 
 STATUS_CLEAN = "clean"
 STATUS_SALT_REMOVED = "salt_removed"
@@ -240,41 +234,14 @@ STATUS_INVALID_SMILES = "invalid_smiles"
 STATUS_DUPLICATE = "duplicate"
 
 ALL_STATUSES = [
-    STATUS_CLEAN,
-    STATUS_SALT_REMOVED,
-    STATUS_MIXTURE,
-    STATUS_METAL_COMPLEX,
-    STATUS_AMBIGUOUS_FRAGMENT,
-    STATUS_NO_PARENT,
-    STATUS_INVALID_SMILES,
-    STATUS_DUPLICATE,
+    STATUS_CLEAN, STATUS_SALT_REMOVED, STATUS_MIXTURE, STATUS_METAL_COMPLEX,
+    STATUS_AMBIGUOUS_FRAGMENT, STATUS_NO_PARENT, STATUS_INVALID_SMILES, STATUS_DUPLICATE,
 ]
-
-# Statuses that represent an unambiguous, single organic parent
-# structure -- these are the only rows eligible for the clean dataset
-# (before duplicate resolution potentially demotes some of them).
 _CLEAN_ELIGIBLE_STATUSES = {STATUS_CLEAN, STATUS_SALT_REMOVED}
-
-# Columns this script's cleaning/classification logic must NEVER read.
-# Documented here for reviewers; the architecture (clean_smiles() only
-# ever receives a bare string) is what actually enforces this, not
-# this list -- see LEAKAGE PROTECTION in the module docstring.
 LEAKAGE_COLUMNS = frozenset({
     "Y", "Overall", "TA98", "TA100", "TA102", "TA1535", "TA1537",
     "Id", "source", "Partition",
 })
-
-
-# =======================================================================
-# METAL RECOGNITION
-# =======================================================================
-
-# Deliberately conservative: common metallic elements seen in drug
-# salts and metal-based therapeutics/complexes. Metalloids (B, Si, Ge,
-# As, Sb, Te) are intentionally EXCLUDED -- they behave chemically
-# like organic-compatible elements in most drug structures (e.g.
-# boronic acids) and are not what "do not auto-remove metals" is
-# guarding against.
 METAL_SYMBOLS = frozenset({
     "Li", "Na", "K", "Rb", "Cs", "Fr",
     "Be", "Mg", "Ca", "Sr", "Ba", "Ra",
@@ -286,117 +253,33 @@ METAL_SYMBOLS = frozenset({
     "Ho", "Er", "Tm", "Yb", "Lu",
     "Ac", "Th", "Pa", "U", "Np", "Pu",
 })
-
-
 def _contains_metal(fragment: Chem.Mol) -> bool:
-    """True if any atom in `fragment` is one of METAL_SYMBOLS."""
     return any(atom.GetSymbol() in METAL_SYMBOLS for atom in fragment.GetAtoms())
-
-
 def _has_carbon(fragment: Chem.Mol) -> bool:
     return any(atom.GetSymbol() == "C" for atom in fragment.GetAtoms())
-
-
-# =======================================================================
-# SALT / SOLVENT RECOGNITION (non-metal only)
-# =======================================================================
-
-# Non-ionic solvents that legitimately co-crystallize with an API but
-# are not covered by RDKit's ionic-salt SMARTS table. These are only
-# treated as removable when at least one other fragment is present to
-# be the actual parent -- see `_categorize_fragment`. None of these
-# contain a metal atom.
 SUPPLEMENTARY_SOLVENT_SMILES = frozenset({
-    "CO",          # methanol
-    "CCO",         # ethanol
-    "CC(C)O",      # isopropanol
-    "CC(C)=O",     # acetone
-    "CS(C)=O",     # DMSO
-    "O=CN(C)C",    # DMF
-    "C1CCOC1",     # THF
+    "CO", "CCO", "CC(C)O", "CC(C)=O", "CS(C)=O", "O=CN(C)C", "C1CCOC1",
 })
-
-# Simple, unambiguous, non-metal counterions/small inorganic species.
-# Unlike the solvent list above, these are treated as removable
-# regardless of whether other fragments are present -- a bare "Cl"
-# (chloride) or bare "O" (water) row on its own has no organic parent
-# and should be `no_parent`, not `clean`.
-#
-# Deliberately NOT included here: simple carboxylic acids that are
-# also plausible standalone toxicology test compounds in their own
-# right (acetic, citric, succinic, fumaric, tartaric, formic acid,
-# TFA). Those are handled separately by PROTECTED_ORGANIC_ACID_SMILES
-# below -- see that block for why.
 SUPPLEMENTARY_SAFE_SALT_SMILES = frozenset({
-    "O",                        # water
-    "[NH4+]",                   # ammonium
-    "Cl", "[Cl-]",               # chloride
-    "Br", "[Br-]",               # bromide
-    "I", "[I-]",                 # iodide
-    "[OH-]",                     # hydroxide
-    "OS(=O)(=O)O",                # sulfuric acid / sulfate (protonated)
-    "OP(=O)(O)O",                 # phosphoric acid / phosphate (protonated)
-    "O=[N+]([O-])O",              # nitric acid
-    "OC(=O)O",                    # carbonic acid
-    "CS(=O)(=O)O",                 # methanesulfonic acid (mesylate)
-    "Cc1ccc(cc1)S(=O)(=O)O",        # p-toluenesulfonic acid (tosylate)
-    "OC(=O)C(=O)O",                 # oxalic acid
+    "O", "[NH4+]", "Cl", "[Cl-]", "Br", "[Br-]", "I", "[I-]", "[OH-]",
+    "OS(=O)(=O)O", "OP(=O)(O)O", "O=[N+]([O-])O", "OC(=O)O", "CS(=O)(=O)O",
+    "Cc1ccc(cc1)S(=O)(=O)O", "OC(=O)C(=O)O",
 })
-
-# Simple organic (carboxylic) acids that are common salt-forming
-# counterions in pharma BUT are also legitimate standalone assay
-# compounds in a toxicology dataset -- e.g. acetic acid or TFA could
-# themselves be a row someone is testing, not just a counterion on
-# some other drug. Silently stripping them (as RDKit's own default
-# SaltRemover table would do) risks turning a real test compound into
-# `no_parent` or wrongly merging it away in a mixture.
-#
-# These are therefore NEVER classified as "removable", in either
-# direction:
-#   - standalone ("CC(=O)O" alone)          -> treated as `parent`,
-#     status `clean`, not `no_parent`.
-#   - alongside another organic fragment
-#     ("CCN.CC(=O)O")                        -> treated as `parent`
-#     too, so the row becomes `mixture` (two real candidate
-#     compounds) rather than being auto-resolved to `salt_removed`.
-#     This is a deliberate "never guess" choice: we no longer assume
-#     the acid is just playing counterion.
-#
-# This requires actively suppressing RDKit's own built-in salt SMARTS
-# table for these specific structures too (see PROTECTED_ORGANIC_ACID
-# usage in `_categorize_fragment`), since that table recognizes all of
-# these as salts by default.
 PROTECTED_ORGANIC_ACID_SMILES = frozenset({
-    "CC(=O)O", "CC(=O)[O-]",                        # acetic acid / acetate
-    "OC(=O)CC(O)(CC(=O)O)C(=O)O",                     # citric acid
-    "OC(=O)CCC(=O)O",                                  # succinic acid
-    "OC(=O)/C=C/C(=O)O", "OC(=O)C=CC(=O)O",             # fumaric acid
-    "OC(=O)C(O)C(O)C(=O)O",                              # tartaric acid
-    "OC=O", "[O-]C=O",                                    # formic acid / formate
-    "OC(=O)C(F)(F)F", "[O-]C(=O)C(F)(F)F",                 # TFA / trifluoroacetate
+    "CC(=O)O", "CC(=O)[O-]", "OC(=O)CC(O)(CC(=O)O)C(=O)O", "OC(=O)CCC(=O)O",
+    "OC(=O)/C=C/C(=O)O", "OC(=O)C=CC(=O)O", "OC(=O)C(O)C(O)C(=O)O", "OC=O", "[O-]C=O",
+    "OC(=O)C(F)(F)F", "[O-]C(=O)C(F)(F)F",
 })
-
-
+def _mols_from_smiles_set(smiles_set: frozenset[str]) -> dict[str, Chem.Mol]:
+    out = {}
+    for smi in smiles_set:
+        mol = Chem.MolFromSmiles(smi)
+        if mol is None:
+            logger.warning("Reference SMILES failed to parse and was skipped: %r", smi)
+            continue
+        out[smi] = mol
+    return out
 def _load_metal_free_salt_patterns() -> list[Chem.Mol]:
-    """
-    Load RDKit's built-in, maintained salt/counterion SMARTS patterns
-    (the same table used internally by `SaltRemover`), then drop any
-    pattern that contains a metal atom OR that whole-fragment-matches
-    one of the protected standalone organic acids.
-
-    Dropping metal-containing patterns is what enforces "never
-    automatically remove metals": RDKit's own table happily matches
-    Na+, K+, Ca2+, Al3+, Zn2+, etc. as counterions, but this pipeline's
-    whole-fragment salt check must never fire on those -- they are
-    handled exclusively by the metal-complex path instead.
-
-    Dropping the protected-acid patterns is what enforces "never
-    automatically classify standalone organic acids (acetic, citric,
-    succinic, fumaric, tartaric, formic, TFA, ...) as removable
-    salts": RDKit's default table also recognizes all of these as
-    salts, which is exactly the behavior we need to override so they
-    fall through to ordinary `parent` classification instead.
-    """
     remover = SaltRemover.SaltRemover()
     protected_mols = list(_mols_from_smiles_set(PROTECTED_ORGANIC_ACID_SMILES).values())
     safe_patterns = []
@@ -404,11 +287,6 @@ def _load_metal_free_salt_patterns() -> list[Chem.Mol]:
         try:
             if any(atom.GetSymbol() in METAL_SYMBOLS for atom in pattern.GetAtoms()):
                 continue
-            # Exclude this SMARTS pattern if it would whole-fragment-
-            # match one of the protected acids -- i.e. the acid (as an
-            # actual molecule) is the substructure-match TARGET and
-            # the salt pattern is the QUERY, mirroring exactly how
-            # `_matches_smarts_table` matches real fragments below.
             protects_an_acid = False
             for protected in protected_mols:
                 match = protected.GetSubstructMatch(pattern)
@@ -417,120 +295,151 @@ def _load_metal_free_salt_patterns() -> list[Chem.Mol]:
                     break
             if protects_an_acid:
                 continue
-        except Exception as exc:  # pragma: no cover - defensive
-            # If we can't confidently tell this pattern is metal-free
-            # and acid-free, exclude it rather than risk auto-removing
-            # something it shouldn't.
+        except Exception as exc:
             logger.debug("Could not inspect salt pattern, excluding it: %s", exc)
             continue
         safe_patterns.append(pattern)
     return safe_patterns
-
-
-def _mols_from_smiles_set(smiles_set: frozenset[str]) -> dict[str, Chem.Mol]:
-    out = {}
-    for smi in smiles_set:
-        mol = Chem.MolFromSmiles(smi)
-        if mol is None:  # pragma: no cover - defensive, catches typos
-            logger.warning("Reference SMILES failed to parse and was skipped: %r", smi)
-            continue
-        out[smi] = mol
-    return out
-
-
 _METAL_FREE_SALT_PATTERNS: list[Chem.Mol] = _load_metal_free_salt_patterns()
 _SOLVENT_MOLS: dict[str, Chem.Mol] = _mols_from_smiles_set(SUPPLEMENTARY_SOLVENT_SMILES)
 _SAFE_SALT_MOLS: dict[str, Chem.Mol] = _mols_from_smiles_set(SUPPLEMENTARY_SAFE_SALT_SMILES)
 _PROTECTED_ACID_MOLS: dict[str, Chem.Mol] = _mols_from_smiles_set(PROTECTED_ORGANIC_ACID_SMILES)
-_SOLVENT_CANONICAL: frozenset[str] = frozenset(
-    Chem.MolToSmiles(m, canonical=True) for m in _SOLVENT_MOLS.values()
-)
-_SAFE_SALT_CANONICAL: frozenset[str] = frozenset(
-    Chem.MolToSmiles(m, canonical=True) for m in _SAFE_SALT_MOLS.values()
-)
-_PROTECTED_ACID_CANONICAL: frozenset[str] = frozenset(
-    Chem.MolToSmiles(m, canonical=True) for m in _PROTECTED_ACID_MOLS.values()
-)
-
-
+_SOLVENT_CANONICAL: frozenset[str] = frozenset(Chem.MolToSmiles(m, canonical=True) for m in _SOLVENT_MOLS.values())
+_SAFE_SALT_CANONICAL: frozenset[str] = frozenset(Chem.MolToSmiles(m, canonical=True) for m in _SAFE_SALT_MOLS.values())
+_PROTECTED_ACID_CANONICAL: frozenset[str] = frozenset(Chem.MolToSmiles(m, canonical=True) for m in _PROTECTED_ACID_MOLS.values())
 def _canonical(mol: Chem.Mol) -> str:
     return Chem.MolToSmiles(mol, canonical=True)
-
-
 def _stereo_counts(mol: Chem.Mol) -> tuple[int, int]:
-    """
-    Count stereocenters in a resolved molecule.
-
-    Returns (n_stereocenters, n_unassigned_stereocenters). Uses
-    includeUnassigned=True so a stereocenter present in the graph but
-    NOT specified in the input SMILES is still counted -- that's
-    exactly the case worth flagging (raw data didn't say which
-    enantiomer). Stereochemistry itself is never modified here; this
-    is reporting only.
-    """
-    centers = Chem.FindMolChiralCenters(
-        mol, includeUnassigned=True, useLegacyImplementation=False
-    )
+    centers = Chem.FindMolChiralCenters(mol, includeUnassigned=True, useLegacyImplementation=False)
     n_total = len(centers)
     n_unassigned = sum(1 for _, label in centers if label == "?")
     return n_total, n_unassigned
 
 
+def _canonical_isomeric(mol: Chem.Mol) -> str:
+    """Isomeric SMILES - preserves R/S, E/Z. Audit only."""
+    return Chem.MolToSmiles(mol, canonical=True, isomericSmiles=True)
+
+def _ez_counts(mol: Chem.Mol) -> tuple[int, int]:
+    """
+    Production-simple E/Z audit - fully RDKit, no heuristics.
+    Assigned: BondStereo == E or Z
+    Unassigned: BondStereo == ANY, or bond is potential stereo but STEREONONE
+    """
+    n_assigned = 0
+    n_unassigned = 0
+    try:
+        Chem.AssignStereochemistry(mol, force=True, cleanIt=True, flagPossibleStereoCenters=True)
+    except Exception:
+        pass
+
+    # RDKit potential stereo bonds
+    potential = set()
+    try:
+        from rdkit.Chem import FindPotentialStereo
+        for info in FindPotentialStereo(mol):
+            try:
+                # info.type is StereoType, info.centeredOn is bond idx for double bonds
+                if "Bond" in str(info.type):
+                    potential.add(int(info.centeredOn))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    for bond in mol.GetBonds():
+        if bond.GetBondType() != Chem.BondType.DOUBLE or bond.GetIsAromatic():
+            continue
+        st = bond.GetStereo()
+        if st == Chem.BondStereo.STEREOE or st == Chem.BondStereo.STEREOZ:
+            n_assigned += 1
+        elif st == Chem.BondStereo.STEREOANY:
+            n_unassigned += 1
+        elif bond.GetIdx() in potential and st == Chem.BondStereo.STEREONONE:
+            # stereogenic but unspecified
+            n_unassigned += 1
+    return n_assigned, n_unassigned
+
+def _isotope_audit(mol: Chem.Mol):
+    labs = [f"{a.GetIsotope()}{a.GetSymbol()}_{a.GetIdx()}" for a in mol.GetAtoms() if a.GetIsotope() != 0]
+    return (len(labs) > 0), len(labs), ";".join(labs)
+
+_tautomer_enumerator = None
+def _get_tautomer_enumerator():
+    global _tautomer_enumerator
+    if _tautomer_enumerator is not None:
+        return _tautomer_enumerator
+    try:
+        from rdkit.Chem.MolStandardize import rdMolStandardize
+        _tautomer_enumerator = rdMolStandardize.TautomerEnumerator()
+        return _tautomer_enumerator
+    except Exception:
+        return None
+
+def _tautomer_audit(mol: Chem.Mol):
+    try:
+        enum = _get_tautomer_enumerator()
+        if enum is None:
+            return False, None, None
+        try:
+            has = len(list(enum.Enumerate(mol))) > 1
+        except Exception:
+            has = False
+        can = enum.Canonicalize(mol)
+        can_smi = Chem.MolToSmiles(can, canonical=True)
+        try:
+            ik = Chem.MolToInchiKey(can)
+            first = ik.split("-")[0] if ik else can_smi
+        except Exception:
+            first = can_smi
+        return has, can_smi, first
+    except Exception:
+        return False, None, None
+
+def _stereo_signature(mol: Chem.Mol) -> str:
+    try:
+        iso = _canonical_isomeric(mol)
+        centers = Chem.FindMolChiralCenters(mol, includeUnassigned=True, useLegacyImplementation=False)
+        c_str = ";".join([f"{i}:{lab}" for i, lab in sorted(centers)]) if centers else "none"
+        ez_parts = []
+        for b in mol.GetBonds():
+            if b.GetBondType() == Chem.BondType.DOUBLE and not b.GetIsAromatic():
+                st = b.GetStereo()
+                if st == Chem.BondStereo.STEREOE:
+                    ez_parts.append(f"{b.GetIdx()}:E")
+                elif st == Chem.BondStereo.STEREOZ:
+                    ez_parts.append(f"{b.GetIdx()}:Z")
+                elif st == Chem.BondStereo.STEREOANY:
+                    ez_parts.append(f"{b.GetIdx()}:ANY")
+        ez_str = ";".join(ez_parts) if ez_parts else "none"
+        return f"{iso} | CHIRAL[{c_str}] | EZ[{ez_str}]"
+    except Exception:
+        try:
+            return _canonical_isomeric(mol)
+        except Exception:
+            return ""
+
+
 def _matches_smarts_table(fragment: Chem.Mol) -> bool:
-    """Whole-fragment match against the metal-free RDKit salt SMARTS table."""
     n_atoms = fragment.GetNumAtoms()
     for pattern in _METAL_FREE_SALT_PATTERNS:
         match = fragment.GetSubstructMatch(pattern)
         if match and len(match) == n_atoms:
             return True
     return False
-
-
 def _categorize_fragment(fragment: Chem.Mol, has_siblings: bool) -> str:
-    """
-    Classify a single fragment as one of:
-      "metal"      contains a metal atom -- never auto-processed
-      "removable"  a recognized non-metal salt/solvent
-      "parent"     a plausible organic candidate parent
-      "ambiguous"  none of the above -- unrecognized, not clearly
-                   organic; must not be guessed at
-
-    `has_siblings` controls whether the supplementary *solvent* list
-    applies (solvents are only "not the parent" when something else
-    is present to actually be the parent). The safe-salt list (water,
-    chloride, ...) applies regardless of sibling fragments, since
-    those are never plausible parents in a toxicology dataset.
-
-    Protected organic acids (acetic, citric, succinic, fumaric,
-    tartaric, formic, TFA) are checked BEFORE the salt/SMARTS checks
-    and always classify as "parent", never "removable" -- they are
-    common salt counterions in pharma, but also plausible standalone
-    toxicology test compounds, so this pipeline never assumes they're
-    "just" a counterion. See PROTECTED_ORGANIC_ACID_SMILES.
-    """
     if _contains_metal(fragment):
         return "metal"
-
     frag_canonical = _canonical(fragment)
-
     if frag_canonical in _PROTECTED_ACID_CANONICAL:
         return "parent"
-
     if frag_canonical in _SAFE_SALT_CANONICAL or _matches_smarts_table(fragment):
         return "removable"
-
     if has_siblings and frag_canonical in _SOLVENT_CANONICAL:
         return "removable"
-
     if _has_carbon(fragment):
         return "parent"
-
     return "ambiguous"
-
-
-# =======================================================================
-# PER-ROW CLEANING
-# =======================================================================
 
 @dataclasses.dataclass
 class CleaningResult:
@@ -538,259 +447,163 @@ class CleaningResult:
     status: str
     num_fragments: int
     num_removed: int
-    removed_fragments: str   # canonical SMILES of removed salts/solvents, "."-joined
-    retained_fragments: str  # canonical SMILES of fragments kept for review, "."-joined
+    removed_fragments: str
+    retained_fragments: str
     inchikey: Optional[str]
     review_reason: str
     error_detail: str = ""
-    # Stereocenter audit -- populated ONLY for rows that resolve to a
-    # single structure (`clean` / `salt_removed`). None (not 0) means
-    # "no single resolved structure to check", distinct from an
-    # actual count of 0. See STEREOCENTER AUDITING in the module
-    # docstring.
     n_stereocenters: Optional[int] = None
     n_unassigned_stereocenters: Optional[int] = None
-
+    # === AUDIT ONLY (isomers preserved, never removed) ===
+    n_ez_stereocenters: Optional[int] = None
+    n_assigned_ez: Optional[int] = None
+    n_unassigned_ez: Optional[int] = None
+    has_chiral: Optional[bool] = None
+    has_ez: Optional[bool] = None
+    has_stereo: Optional[bool] = None
+    has_unassigned_stereo: Optional[bool] = None
+    is_stereoisomer_defined: Optional[bool] = None
+    has_isotope: Optional[bool] = None
+    n_isotope_atoms: Optional[int] = None
+    isotope_labels: Optional[str] = None
+    has_tautomer: Optional[bool] = None
+    tautomer_canonical_smiles: Optional[str] = None
+    tautomer_canonical_firstblock: Optional[str] = None
+    stereo_signature: Optional[str] = None
+    SMILES_isomeric: Optional[str] = None
+    inchikey_no_stereo: Optional[str] = None
+    tautomer_group_id: Optional[int] = None
 
 def _safe_inchikey(mol: Chem.Mol) -> Optional[str]:
-    """InChIKey generation can fail for exotic structures; never raise."""
     try:
         key = Chem.MolToInchiKey(mol)
         return key or None
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:
         logger.debug("InChIKey generation failed: %s", exc)
         return None
 
-
 def clean_smiles(smiles: object) -> CleaningResult:
-    """
-    Clean and classify a single SMILES value.
-
-    IMPORTANT (leakage protection): this function's only input is the
-    SMILES value itself. It has no access to, and therefore cannot be
-    influenced by, any label/metadata column -- see LEAKAGE PROTECTION
-    in the module docstring.
-
-    This function never raises: any unexpected RDKit exception is
-    caught and reported as `invalid_smiles` (with the exception text
-    in `error_detail`) so that one malformed row can never abort a
-    batch job.
-    """
     try:
         if pd.isna(smiles):
-            return CleaningResult(None, STATUS_INVALID_SMILES, 0, 0, "", "", None,
-                                   "missing SMILES value")
-
+            return CleaningResult(None, STATUS_INVALID_SMILES, 0, 0, "", "", None, "missing SMILES value")
         smiles = str(smiles).strip()
         if not smiles:
-            return CleaningResult(None, STATUS_INVALID_SMILES, 0, 0, "", "", None,
-                                   "missing SMILES value")
-
+            return CleaningResult(None, STATUS_INVALID_SMILES, 0, 0, "", "", None, "missing SMILES value")
         mol = Chem.MolFromSmiles(smiles)
         if mol is None:
-            return CleaningResult(None, STATUS_INVALID_SMILES, 0, 0, "", "", None,
-                                   "RDKit could not parse this SMILES string")
-
+            return CleaningResult(None, STATUS_INVALID_SMILES, 0, 0, "", "", None, "RDKit could not parse this SMILES string")
         fragments = list(Chem.GetMolFrags(mol, asMols=True))
         num_fragments = len(fragments)
         has_siblings = num_fragments > 1
-
         categories = [_categorize_fragment(f, has_siblings) for f in fragments]
-
         metals = [f for f, c in zip(fragments, categories) if c == "metal"]
         removable = [f for f, c in zip(fragments, categories) if c == "removable"]
         parents = [f for f, c in zip(fragments, categories) if c == "parent"]
         ambiguous = [f for f, c in zip(fragments, categories) if c == "ambiguous"]
-
         removed_str = ".".join(_canonical(f) for f in removable)
         num_removed = len(removable)
-
-        # -- Metals are never auto-removed or auto-standardized, full --
-        # -- stop, regardless of what else is in the molecule. --------
         if metals:
             retained_str = ".".join(_canonical(f) for f in (parents + ambiguous + metals))
-            return CleaningResult(
-                None, STATUS_METAL_COMPLEX, num_fragments, num_removed,
-                removed_str, retained_str, None,
-                "contains a metal atom (as a simple ion or part of a "
-                "coordination complex); metals are never automatically "
-                "removed or standardized and require manual review",
-            )
-
-        # -- A fragment we can't confidently place anywhere. Do not ---
-        # -- guess whether it's a novel salt or a real parent. --------
+            return CleaningResult(None, STATUS_METAL_COMPLEX, num_fragments, num_removed, removed_str, retained_str, None, "contains a metal atom (as a simple ion or part of a coordination complex); metals are never automatically removed or standardized and require manual review")
         if ambiguous:
             retained_str = ".".join(_canonical(f) for f in (parents + ambiguous))
-            return CleaningResult(
-                None, STATUS_AMBIGUOUS_FRAGMENT, num_fragments, num_removed,
-                removed_str, retained_str, None,
-                "one or more fragments could not be confidently classified "
-                "as a known salt/solvent or a plausible organic parent",
-            )
-
-        # -- Every fragment was a recognized non-metal salt/solvent. --
+            return CleaningResult(None, STATUS_AMBIGUOUS_FRAGMENT, num_fragments, num_removed, removed_str, retained_str, None, "one or more fragments could not be confidently classified as a known salt/solvent or a plausible organic parent")
         if not parents:
-            return CleaningResult(
-                None, STATUS_NO_PARENT, num_fragments, num_removed,
-                removed_str, "", None,
-                "no organic parent fragment remained after removing "
-                "recognized salts/solvents",
-            )
-
-        # -- Exactly one organic parent candidate: clean success. -----
+            return CleaningResult(None, STATUS_NO_PARENT, num_fragments, num_removed, removed_str, "", None, "no organic parent fragment remained after removing recognized salts/solvents")
         if len(parents) == 1:
             cleaned = _canonical(parents[0])
             status = STATUS_CLEAN if num_removed == 0 else STATUS_SALT_REMOVED
             n_stereo, n_unassigned = _stereo_counts(parents[0])
-            return CleaningResult(
-                cleaned, status, num_fragments, num_removed, removed_str, "",
-                _safe_inchikey(parents[0]), "",
-                n_stereocenters=n_stereo, n_unassigned_stereocenters=n_unassigned,
-            )
-
-        # -- Multiple parent candidates. If they are all structurally -
-        # -- identical (e.g. "X.X"), this is not actually ambiguous -- -
-        # -- resolve it to that single structure. ----------------------
+            # --- AUDIT ONLY, preserve isomer ---
+            try:
+                n_a_ez, n_u_ez = _ez_counts(parents[0])
+                n_ez = n_a_ez + n_u_ez
+                has_chiral = n_stereo > 0
+                has_ez = n_ez > 0
+                has_stereo = has_chiral or has_ez
+                has_unassigned = (n_unassigned > 0 or n_u_ez > 0)
+                is_defined = has_stereo and not has_unassigned
+                has_iso, n_iso, iso_labs = _isotope_audit(parents[0])
+                has_tau, tau_smi, tau_first = _tautomer_audit(parents[0])
+                sig = _stereo_signature(parents[0])
+                iso_smi = _canonical_isomeric(parents[0])
+                ik = _safe_inchikey(parents[0])
+                ik_first = ik.split("-")[0] if ik else None
+            except Exception:
+                n_ez = n_a_ez = n_u_ez = 0
+                has_chiral = has_ez = has_stereo = has_unassigned = is_defined = False
+                has_iso = False; n_iso = 0; iso_labs = ""; has_tau = False; tau_smi = None; tau_first = None; sig = None; iso_smi = None; ik_first = None
+                ik = _safe_inchikey(parents[0])
+            return CleaningResult(cleaned, status, num_fragments, num_removed, removed_str, "", ik, "", n_stereocenters=n_stereo, n_unassigned_stereocenters=n_unassigned, n_ez_stereocenters=n_ez, n_assigned_ez=n_a_ez, n_unassigned_ez=n_u_ez, has_chiral=has_chiral, has_ez=has_ez, has_stereo=has_stereo, has_unassigned_stereo=has_unassigned, is_stereoisomer_defined=is_defined, has_isotope=has_iso, n_isotope_atoms=n_iso, isotope_labels=iso_labs, has_tautomer=has_tau, tautomer_canonical_smiles=tau_smi, tautomer_canonical_firstblock=tau_first, stereo_signature=sig, SMILES_isomeric=iso_smi, inchikey_no_stereo=ik_first)
         canon_parents = [_canonical(p) for p in parents]
         if len(set(canon_parents)) == 1:
             cleaned = canon_parents[0]
             status = STATUS_CLEAN if num_removed == 0 else STATUS_SALT_REMOVED
             n_stereo, n_unassigned = _stereo_counts(parents[0])
-            return CleaningResult(
-                cleaned, status, num_fragments, num_removed, removed_str, "",
-                _safe_inchikey(parents[0]), "",
-                n_stereocenters=n_stereo, n_unassigned_stereocenters=n_unassigned,
-            )
-
-        # -- Genuinely different organic components remain: a mixture -
-        # -- or co-crystal. We deliberately do NOT guess which one is --
-        # -- the biologically relevant molecule. ------------------------
+            try:
+                n_a_ez, n_u_ez = _ez_counts(parents[0])
+                n_ez = n_a_ez + n_u_ez
+                has_chiral = n_stereo > 0
+                has_ez = n_ez > 0
+                has_stereo = has_chiral or has_ez
+                has_unassigned = (n_unassigned > 0 or n_u_ez > 0)
+                is_defined = has_stereo and not has_unassigned
+                has_iso, n_iso, iso_labs = _isotope_audit(parents[0])
+                has_tau, tau_smi, tau_first = _tautomer_audit(parents[0])
+                sig = _stereo_signature(parents[0])
+                iso_smi = _canonical_isomeric(parents[0])
+                ik = _safe_inchikey(parents[0])
+                ik_first = ik.split("-")[0] if ik else None
+            except Exception:
+                n_ez = n_a_ez = n_u_ez = 0
+                has_chiral = has_ez = has_stereo = has_unassigned = is_defined = False
+                has_iso = False; n_iso = 0; iso_labs = ""; has_tau = False; tau_smi = None; tau_first = None; sig = None; iso_smi = None; ik_first = None
+                ik = _safe_inchikey(parents[0])
+            return CleaningResult(cleaned, status, num_fragments, num_removed, removed_str, "", ik, "", n_stereocenters=n_stereo, n_unassigned_stereocenters=n_unassigned, n_ez_stereocenters=n_ez, n_assigned_ez=n_a_ez, n_unassigned_ez=n_u_ez, has_chiral=has_chiral, has_ez=has_ez, has_stereo=has_stereo, has_unassigned_stereo=has_unassigned, is_stereoisomer_defined=is_defined, has_isotope=has_iso, n_isotope_atoms=n_iso, isotope_labels=iso_labs, has_tautomer=has_tau, tautomer_canonical_smiles=tau_smi, tautomer_canonical_firstblock=tau_first, stereo_signature=sig, SMILES_isomeric=iso_smi, inchikey_no_stereo=ik_first)
         retained_str = ".".join(canon_parents)
-        return CleaningResult(
-            None, STATUS_MIXTURE, num_fragments, num_removed, removed_str,
-            retained_str, None,
-            "multiple distinct, non-salt organic components remain; "
-            "cannot determine which is biologically relevant without "
-            "guessing",
-        )
-
-    except Exception as exc:  # noqa: BLE001 - intentional catch-all
+        return CleaningResult(None, STATUS_MIXTURE, num_fragments, num_removed, removed_str, retained_str, None, "multiple distinct, non-salt organic components remain; cannot determine which is biologically relevant without guessing")
+    except Exception as exc:
         logger.warning("Unexpected error cleaning %r: %s", smiles, exc)
-        return CleaningResult(
-            None, STATUS_INVALID_SMILES, 0, 0, "", "", None,
-            "unexpected processing error", str(exc),
-        )
+        return CleaningResult(None, STATUS_INVALID_SMILES, 0, 0, "", "", None, "unexpected processing error", str(exc))
 
-
-# =======================================================================
-# DUPLICATE RESOLUTION (structure-first, label-aware only for arbitration)
-# =======================================================================
-
-def _resolve_duplicates(
-    df: pd.DataFrame,
-    status_col: str,
-    inchikey_col: str,
-    target_col: Optional[str],
-) -> tuple[pd.DataFrame, dict]:
-    """
-    Given a dataframe that already has per-row cleaning status and
-    inchikey columns populated, find structural duplicates and decide
-    which rows stay eligible for the clean dataset.
-
-    Returns the (possibly status-mutated) dataframe plus a stats dict.
-    Mutates only `status_col`, `review_reason`, and a new
-    `duplicate_group_id` column -- never touches `smiles_clean`/the
-    standardized structure itself, and never re-runs any chemistry.
-
-    `target_col` is used ONLY here, ONLY to decide whether a group of
-    structural duplicates agrees well enough to auto-collapse. It is
-    never passed to, or used by, `clean_smiles()`.
-    """
+def _resolve_duplicates(df: pd.DataFrame, status_col: str, inchikey_col: str, target_col: Optional[str]) -> tuple[pd.DataFrame, dict]:
     df = df.copy()
     df["duplicate_group_id"] = pd.Series(pd.NA, index=df.index, dtype="Int64")
-
     eligible = df[status_col].isin(_CLEAN_ELIGIBLE_STATUSES) & df[inchikey_col].notna()
     if not eligible.any():
-        return df, {
-            "duplicate_groups": 0, "duplicate_rows_flagged": 0,
-            "conflicting_duplicate_groups": 0, "conflicting_duplicate_rows": 0,
-        }
-
-    # Deterministic group ordering: sort each InChIKey's member rows by
-    # original row index, then order groups themselves by the index at
-    # which they first appear. This avoids depending on pandas'
-    # internal tie-breaking in value_counts()/groupby ordering, which
-    # is not a documented stable contract across versions -- important
-    # for a pipeline that promises reproducible, auditable output.
+        return df, {"duplicate_groups": 0, "duplicate_rows_flagged": 0, "conflicting_duplicate_groups": 0, "conflicting_duplicate_rows": 0}
     groups: dict[str, list[int]] = {}
     for idx in df.index[eligible]:
         key = df.at[idx, inchikey_col]
         groups.setdefault(key, []).append(idx)
-
-    duplicate_keys = sorted(
-        (key for key, idxs in groups.items() if len(idxs) > 1),
-        key=lambda k: min(groups[k]),
-    )
-
-    n_dup_groups = 0
-    n_dup_rows_flagged = 0
-    n_conflict_groups = 0
-    n_conflict_rows = 0
-
+    duplicate_keys = sorted((key for key, idxs in groups.items() if len(idxs) > 1), key=lambda k: min(groups[k]))
+    n_dup_groups = 0; n_dup_rows_flagged = 0; n_conflict_groups = 0; n_conflict_rows = 0
     for group_id, key in enumerate(duplicate_keys):
         member_idx = sorted(groups[key])
         df.loc[member_idx, "duplicate_group_id"] = group_id
         n_dup_groups += 1
-
         conflict = None
         if target_col is not None and target_col in df.columns:
             values = df.loc[member_idx, target_col].dropna().unique()
             conflict = len(values) > 1
-        # If target_col is None (or missing from the data), agreement
-        # cannot be verified -- treat like a conflict: never guess
-        # which row to keep. See DUPLICATE HANDLING in the docstring.
         unverifiable = target_col is None or target_col not in df.columns
-
         if conflict or unverifiable:
             for idx in member_idx:
                 df.at[idx, status_col] = STATUS_DUPLICATE
                 if conflict:
-                    df.at[idx, "review_reason"] = (
-                        f"duplicate structure (InChIKey group {group_id}) with "
-                        f"conflicting values in '{target_col}'; manual review required"
-                    )
+                    df.at[idx, "review_reason"] = f"duplicate structure (InChIKey group {group_id}) with conflicting values in '{target_col}'; manual review required"
                 else:
-                    df.at[idx, "review_reason"] = (
-                        f"duplicate structure (InChIKey group {group_id}); no "
-                        f"--target-col supplied, so agreement could not be "
-                        f"verified"
-                    )
+                    df.at[idx, "review_reason"] = f"duplicate structure (InChIKey group {group_id}); no --target-col supplied, so agreement could not be verified"
             n_dup_rows_flagged += len(member_idx)
             if conflict:
-                n_conflict_groups += 1
-                n_conflict_rows += len(member_idx)
+                n_conflict_groups += 1; n_conflict_rows += len(member_idx)
         else:
-            representative, *others = member_idx  # lowest index kept
+            representative, *others = member_idx
             for idx in others:
                 df.at[idx, status_col] = STATUS_DUPLICATE
-                df.at[idx, "review_reason"] = (
-                    f"duplicate of row {representative} (InChIKey group "
-                    f"{group_id}); same value in '{target_col}' -- "
-                    f"representative row retained in the clean dataset"
-                )
+                df.at[idx, "review_reason"] = f"duplicate of row {representative} (InChIKey group {group_id}); same value in '{target_col}' -- representative row retained in the clean dataset"
             n_dup_rows_flagged += len(others)
-
-    return df, {
-        "duplicate_groups": n_dup_groups,
-        "duplicate_rows_flagged": n_dup_rows_flagged,
-        "conflicting_duplicate_groups": n_conflict_groups,
-        "conflicting_duplicate_rows": n_conflict_rows,
-    }
-
-
-# =======================================================================
-# DATASET-LEVEL PROCESSING
-# =======================================================================
+    return df, {"duplicate_groups": n_dup_groups, "duplicate_rows_flagged": n_dup_rows_flagged, "conflicting_duplicate_groups": n_conflict_groups, "conflicting_duplicate_rows": n_conflict_rows}
 
 def _file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -798,102 +611,33 @@ def _file_sha256(path: Path) -> str:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
-
 def _git_commit_hash() -> Optional[str]:
     try:
-        out = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            capture_output=True, text=True, timeout=5, check=True,
-        )
+        out = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, timeout=5, check=True)
         return out.stdout.strip()
     except Exception:
         return None
-
-
-def clean_dataset(
-    input_path: str,
-    output_path: str,
-    smiles_col: str = "SMILES",
-    report_path: Optional[str] = None,
-    review_path: Optional[str] = None,
-    target_col: Optional[str] = None,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Clean a full CSV dataset and write clean/review/report files to disk.
-
-    Parameters
-    ----------
-    input_path : str
-        Path to the original, untouched CSV file. Only ever read.
-    output_path : str
-        Destination for the clean CSV (e.g. "data/foo_clean.csv").
-    smiles_col : str
-        Name of the column containing SMILES strings in the input file.
-    report_path : str, optional
-        Where to write the JSON audit report. Defaults to
-        `<output stem>_report.json` next to the output file.
-    review_path : str, optional
-        Where to write the review CSV. Defaults to
-        `<output stem with "_clean" -> "_review">.csv`, or
-        `<output stem>_review.csv` if "_clean" isn't in the stem.
-    target_col : str, optional
-        Name of a label column used ONLY to decide whether structural
-        duplicates agree and can be auto-collapsed to one
-        representative. Never used to decide how a molecule is
-        cleaned. If omitted, duplicate groups are conservatively
-        routed to review rather than guessed at.
-
-    Returns
-    -------
-    (clean_df, review_df) : tuple of pandas.DataFrame
-        The two dataframes that were written to `output_path` and
-        `review_path`, respectively.
-    """
-    input_path = Path(input_path)
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
+def clean_dataset(input_path: str, output_path: str, smiles_col: str = "SMILES", report_path: Optional[str] = None, review_path: Optional[str] = None, target_col: Optional[str] = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    input_path = Path(input_path); output_path = Path(output_path); output_path.parent.mkdir(parents=True, exist_ok=True)
     stem = output_path.stem
     if report_path is None:
         report_path = output_path.with_name(stem + "_report.json")
     else:
-        report_path = Path(report_path)
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-
+        report_path = Path(report_path); report_path.parent.mkdir(parents=True, exist_ok=True)
     if review_path is None:
         review_stem = stem[:-6] + "_review" if stem.endswith("_clean") else stem + "_review"
         review_path = output_path.with_name(review_stem + output_path.suffix)
     else:
-        review_path = Path(review_path)
-        review_path.parent.mkdir(parents=True, exist_ok=True)
-
+        review_path = Path(review_path); review_path.parent.mkdir(parents=True, exist_ok=True)
     logger.info("Reading %s", input_path)
-    df = pd.read_csv(input_path)
-    total_rows = len(df)
-
+    df = pd.read_csv(input_path); total_rows = len(df)
     if smiles_col not in df.columns:
-        raise ValueError(
-            f"Column '{smiles_col}' not found in {input_path}. "
-            f"Available columns: {list(df.columns)}"
-        )
+        raise ValueError(f"Column '{smiles_col}' not found in {input_path}. Available columns: {list(df.columns)}")
     if target_col is not None and target_col not in df.columns:
-        logger.warning(
-            "--target-col '%s' not found in input; duplicate groups will "
-            "be conservatively routed to review instead of auto-collapsed.",
-            target_col,
-        )
-
-    # Preserve the untouched original value before anything overwrites
-    # `smiles_col` (relevant when smiles_col is already named "SMILES").
+        logger.warning("--target-col '%s' not found in input; duplicate groups will be conservatively routed to review instead of auto-collapsed.", target_col)
     df["SMILES_raw"] = df[smiles_col]
-
     logger.info("Cleaning %d rows...", total_rows)
-    # NOTE: only the raw SMILES Series is handed to clean_smiles() --
-    # no other column, and in particular no label column, is visible
-    # to the chemistry-classification logic. See LEAKAGE PROTECTION.
     results = df["SMILES_raw"].apply(clean_smiles)
-
     df["SMILES"] = results.apply(lambda r: r.smiles_clean)
     df["cleaning_status"] = results.apply(lambda r: r.status)
     df["inchikey"] = results.apply(lambda r: r.inchikey)
@@ -905,29 +649,45 @@ def clean_dataset(
     df["error_detail"] = results.apply(lambda r: r.error_detail)
     df["n_stereocenters"] = results.apply(lambda r: r.n_stereocenters)
     df["n_unassigned_stereocenters"] = results.apply(lambda r: r.n_unassigned_stereocenters)
-
+    # --- AUDIT ONLY (single implementation) ---
+    df["n_ez_stereocenters"] = results.apply(lambda r: getattr(r, "n_ez_stereocenters", None))
+    df["n_assigned_ez"] = results.apply(lambda r: getattr(r, "n_assigned_ez", None))
+    df["n_unassigned_ez"] = results.apply(lambda r: getattr(r, "n_unassigned_ez", None))
+    df["has_chiral"] = results.apply(lambda r: getattr(r, "has_chiral", None))
+    df["has_ez"] = results.apply(lambda r: getattr(r, "has_ez", None))
+    df["has_unassigned_stereo"] = results.apply(lambda r: getattr(r, "has_unassigned_stereo", None))
+    df["has_isotope"] = results.apply(lambda r: getattr(r, "has_isotope", None))
+    df["n_isotope_atoms"] = results.apply(lambda r: getattr(r, "n_isotope_atoms", None))
+    df["has_tautomer"] = results.apply(lambda r: getattr(r, "has_tautomer", None))
+    # traceability only - NOT model features
+    df["stereo_signature"] = results.apply(lambda r: getattr(r, "stereo_signature", None))
+    df["SMILES_isomeric"] = results.apply(lambda r: getattr(r, "SMILES_isomeric", None))
+    df["tautomer_canonical_smiles"] = results.apply(lambda r: getattr(r, "tautomer_canonical_smiles", None))
+    df["tautomer_canonical_firstblock"] = results.apply(lambda r: getattr(r, "tautomer_canonical_firstblock", None))
+    df["inchikey_no_stereo"] = results.apply(lambda r: getattr(r, "inchikey_no_stereo", None))
     pre_dup_status_counts = df["cleaning_status"].value_counts().to_dict()
-
-    df, dup_stats = _resolve_duplicates(
-        df, status_col="cleaning_status", inchikey_col="inchikey", target_col=target_col,
-    )
-
+    df, dup_stats = _resolve_duplicates(df, status_col="cleaning_status", inchikey_col="inchikey", target_col=target_col)
+    # --- tautomer grouping (audit only): grouped, NOT deduplicated ---
+    # Tautomers share tautomer_group_id but keep distinct InChIKeys -> remain separate rows in clean set
+    df["tautomer_group_id"] = pd.Series(pd.NA, index=df.index, dtype="Int64")
+    try:
+        eligible_tau = df["cleaning_status"].isin(_CLEAN_ELIGIBLE_STATUSES) & df["tautomer_canonical_firstblock"].notna()
+        if eligible_tau.any():
+            tau_map = {}; gid = 0
+            for idx in df.index[eligible_tau]:
+                key = df.at[idx, "tautomer_canonical_firstblock"]
+                if key not in tau_map:
+                    tau_map[key] = gid; gid += 1
+                df.at[idx, "tautomer_group_id"] = tau_map[key]
+    except Exception:
+        pass
     final_status_counts = {s: int((df["cleaning_status"] == s).sum()) for s in ALL_STATUSES}
-
     clean_mask = df["cleaning_status"].isin(_CLEAN_ELIGIBLE_STATUSES)
-    clean_df = df[clean_mask].copy()
-    review_df = df[~clean_mask].copy()
-
-    # No record may disappear silently.
-    assert len(clean_df) + len(review_df) == total_rows, (
-        "internal error: clean + review row counts do not sum to the "
-        "original row count"
-    )
-
+    clean_df = df[clean_mask].copy(); review_df = df[~clean_mask].copy()
+    assert len(clean_df) + len(review_df) == total_rows
     n_invalid = final_status_counts[STATUS_INVALID_SMILES]
     n_valid_smiles = total_rows - n_invalid
     n_unassigned_stereo_rows = int((df["n_unassigned_stereocenters"].fillna(0) > 0).sum())
-
     summary = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "rdkit_version": rdBase.rdkitVersion,
@@ -957,7 +717,6 @@ def clean_dataset(
         "pre_duplicate_status_counts": pre_dup_status_counts,
         "final_status_counts": final_status_counts,
     }
-
     logger.info("=" * 70)
     logger.info("FILE: %s", input_path)
     logger.info("=" * 70)
@@ -966,219 +725,93 @@ def clean_dataset(
         logger.info("%-22s %d", status_name + ":", final_status_counts[status_name])
     logger.info("Retained (clean):   %d", len(clean_df))
     logger.info("Excluded (review):  %d", len(review_df))
-    logger.info(
-        "Duplicate groups: %d (%d rows flagged, %d conflicting groups / "
-        "%d conflicting rows)",
-        dup_stats["duplicate_groups"], dup_stats["duplicate_rows_flagged"],
-        dup_stats["conflicting_duplicate_groups"], dup_stats["conflicting_duplicate_rows"],
-    )
-    logger.info(
-        "Rows with unassigned stereocenters (among resolved structures): %d",
-        n_unassigned_stereo_rows,
-    )
-
-    if final_status_counts[STATUS_MIXTURE]:
-        logger.warning("%d rows are unresolved mixtures.", final_status_counts[STATUS_MIXTURE])
-    if final_status_counts[STATUS_METAL_COMPLEX]:
-        logger.warning(
-            "%d rows contain a metal and require manual review.",
-            final_status_counts[STATUS_METAL_COMPLEX],
-        )
-    if final_status_counts[STATUS_AMBIGUOUS_FRAGMENT]:
-        logger.warning(
-            "%d rows have an ambiguous fragment.",
-            final_status_counts[STATUS_AMBIGUOUS_FRAGMENT],
-        )
-    if final_status_counts[STATUS_INVALID_SMILES]:
-        logger.warning(
-            "%d rows had invalid/missing SMILES.", final_status_counts[STATUS_INVALID_SMILES],
-        )
-    if n_unassigned_stereo_rows:
-        logger.warning(
-            "%d clean/salt_removed rows have at least one unassigned "
-            "stereocenter -- the raw data does not specify which "
-            "enantiomer. Worth reviewing before hERG/CYP3A4 modeling.",
-            n_unassigned_stereo_rows,
-        )
-
+    logger.info("Duplicate groups: %d (%d rows flagged, %d conflicting groups / %d conflicting rows)", dup_stats["duplicate_groups"], dup_stats["duplicate_rows_flagged"], dup_stats["conflicting_duplicate_groups"], dup_stats["conflicting_duplicate_rows"])
+    logger.info("Rows with unassigned stereocenters (among resolved structures): %d", n_unassigned_stereo_rows)
+    if final_status_counts[STATUS_MIXTURE]: logger.warning("%d rows are unresolved mixtures.", final_status_counts[STATUS_MIXTURE])
+    if final_status_counts[STATUS_METAL_COMPLEX]: logger.warning("%d rows contain a metal and require manual review.", final_status_counts[STATUS_METAL_COMPLEX])
+    if final_status_counts[STATUS_AMBIGUOUS_FRAGMENT]: logger.warning("%d rows have an ambiguous fragment.", final_status_counts[STATUS_AMBIGUOUS_FRAGMENT])
+    if final_status_counts[STATUS_INVALID_SMILES]: logger.warning("%d rows had invalid/missing SMILES.", final_status_counts[STATUS_INVALID_SMILES])
+    if n_unassigned_stereo_rows: logger.warning("%d clean/salt_removed rows have at least one unassigned stereocenter -- the raw data does not specify which enantiomer. Worth reviewing before hERG/CYP3A4 modeling.", n_unassigned_stereo_rows)
     clean_df.to_csv(output_path, index=False)
     review_df.to_csv(review_path, index=False)
-    with open(report_path, "w") as fh:
-        json.dump(summary, fh, indent=2)
-
+    with open(report_path, "w") as fh: json.dump(summary, fh, indent=2)
     logger.info("Saved clean dataset:  %s (%d rows)", output_path, len(clean_df))
     logger.info("Saved review dataset: %s (%d rows)", review_path, len(review_df))
     logger.info("Saved audit report:   %s", report_path)
     logger.info("=" * 70)
-
     return clean_df, review_df
 
-
-# =======================================================================
-# SELF TEST (run with --self-test; no external data file required)
-# =======================================================================
-
 def _run_fragment_self_tests() -> list[str]:
-    """Per-row classification tests. Returns a list of failure strings."""
     cases = [
-        # (input, expected_status, expected_smiles_or_None)  --------------
-        # -- ordinary molecule -------------------------------------------
         ("c1ccccc1", STATUS_CLEAN, "c1ccccc1"),
-        # aspirin: only assert status, not the exact canonical string --
-        # RDKit's atom-traversal order for canonicalization is an
-        # internal implementation detail, not something this test
-        # should hard-code and risk breaking on an RDKit version bump.
         ("CC(=O)Oc1ccccc1C(=O)O", STATUS_CLEAN, None),
-        # -- salts (non-metal counterion) ---------------------------------
         ("CCN.Cl", STATUS_SALT_REMOVED, "CCN"),
-        ("CCN.CCO", STATUS_SALT_REMOVED, "CCN"),          # ethanol solvate
+        ("CCN.CCO", STATUS_SALT_REMOVED, "CCN"),
         ("O.O.CCN", STATUS_SALT_REMOVED, "CCN"),
-        # -- protected standalone organic acids -----------------------------
-        # These are common salt counterions in pharma, but the cleaner
-        # must NOT assume that -- they may be the actual test compound.
-        ("CC(=O)O", STATUS_CLEAN, None),                      # acetic acid alone
-        ("OC(=O)CC(O)(CC(=O)O)C(=O)O", STATUS_CLEAN, None),    # citric acid alone
-        ("OC(=O)CCC(=O)O", STATUS_CLEAN, None),                 # succinic acid alone
-        ("OC(=O)C=CC(=O)O", STATUS_CLEAN, None),                  # fumaric acid alone
-        ("OC(=O)C(O)C(O)C(=O)O", STATUS_CLEAN, None),               # tartaric acid alone
-        ("OC=O", STATUS_CLEAN, None),                                 # formic acid alone
-        ("OC(=O)C(F)(F)F", STATUS_CLEAN, None),                        # TFA alone
-        # Paired with another organic fragment, a protected acid is now
-        # treated as a second candidate parent (never guess that it's
-        # "just" a counterion) -- this is a mixture, not a salt.
+        ("CC(=O)O", STATUS_CLEAN, None),
+        ("OC(=O)CC(O)(CC(=O)O)C(=O)O", STATUS_CLEAN, None),
+        ("OC(=O)CCC(=O)O", STATUS_CLEAN, None),
+        ("OC(=O)C=CC(=O)O", STATUS_CLEAN, None),
+        ("OC(=O)C(O)C(O)C(=O)O", STATUS_CLEAN, None),
+        ("OC=O", STATUS_CLEAN, None),
+        ("OC(=O)C(F)(F)F", STATUS_CLEAN, None),
         ("CCN.CC(=O)O", STATUS_MIXTURE, None),
-        # Sanity check that this change is scoped to the protected acid
-        # list only -- ordinary sulfonic-acid salt formers (mesylate,
-        # tosylate) and oxalic acid are unaffected and still auto-strip.
         ("CCN.CS(=O)(=O)O", STATUS_SALT_REMOVED, "CCN"),
         ("CCN.OC(=O)C(=O)O", STATUS_SALT_REMOVED, "CCN"),
-        # -- protonated molecule + counterion ------------------------------
         ("CC[NH3+].[Cl-]", STATUS_SALT_REMOVED, "CC[NH3+]"),
-        # -- pure solvent/standalone organic (no siblings -> stays clean) --
         ("CCO", STATUS_CLEAN, "CCO"),
-        # -- mixtures -------------------------------------------------------
         ("CCN.c1ccccc1O", STATUS_MIXTURE, None),
-        # -- metal complexes / metal-containing salts ------------------------
-        ("[Na+].CC(=O)[O-]", STATUS_METAL_COMPLEX, None),      # sodium acetate
-        ("[Na+].[Cl-]", STATUS_METAL_COMPLEX, None),            # NaCl
-        ("[Fe+2].CC(=O)[O-].CC(=O)[O-]", STATUS_METAL_COMPLEX, None),  # ferrous acetate
-        # -- inorganic compounds ---------------------------------------------
-        ("OS(=O)(=O)O", STATUS_NO_PARENT, None),                # sulfuric acid alone
+        ("[Na+].CC(=O)[O-]", STATUS_METAL_COMPLEX, None),
+        ("[Na+].[Cl-]", STATUS_METAL_COMPLEX, None),
+        ("[Fe+2].CC(=O)[O-].CC(=O)[O-]", STATUS_METAL_COMPLEX, None),
+        ("OS(=O)(=O)O", STATUS_NO_PARENT, None),
         ("[NH4+]", STATUS_NO_PARENT, None),
         ("O", STATUS_NO_PARENT, None),
-        # -- invalid SMILES ----------------------------------------------------
         ("not_real_smiles!!", STATUS_INVALID_SMILES, None),
         ("", STATUS_INVALID_SMILES, None),
         (None, STATUS_INVALID_SMILES, None),
-        # -- ambiguous fragments -------------------------------------------------
-        ("CCN.[He]", STATUS_AMBIGUOUS_FRAGMENT, None),   # helium: not metal, not organic
-        ("N#N", STATUS_AMBIGUOUS_FRAGMENT, None),         # nitrogen gas alone
-        # -- identical repeated fragments resolve unambiguously -------------------
+        ("CCN.[He]", STATUS_AMBIGUOUS_FRAGMENT, None),
+        ("N#N", STATUS_AMBIGUOUS_FRAGMENT, None),
         ("CCN.CCN", STATUS_CLEAN, "CCN"),
         ("CCN.CCN.Cl", STATUS_SALT_REMOVED, "CCN"),
     ]
-
     failures = []
     for smi, expected_status, expected_smiles in cases:
         result = clean_smiles(smi)
         ok_status = result.status == expected_status
         ok_smiles = expected_smiles is None or result.smiles_clean == expected_smiles
         if not (ok_status and ok_smiles):
-            failures.append(
-                f"  [fragment] input={smi!r}\n"
-                f"    expected: status={expected_status!r} smiles={expected_smiles!r}\n"
-                f"    actual:   status={result.status!r} smiles={result.smiles_clean!r}"
-            )
+            failures.append(f"  [fragment] input={smi!r}\n    expected: status={expected_status!r} smiles={expected_smiles!r}\n    actual:   status={result.status!r} smiles={result.smiles_clean!r}")
     return failures
-
-
 def _run_stereocenter_self_tests() -> list[str]:
-    """
-    Stereocenter-audit tests. Checks that stereocenters are counted
-    correctly and that unresolved rows report None (not 0), which is
-    what downstream code should rely on to distinguish "achiral" from
-    "not applicable".
-    """
     failures = []
-    cases = [
-        # (input, expected_n_stereocenters, expected_n_unassigned)
-        ("C[C@H](N)C(=O)O", 1, 0),   # defined stereocenter (L-alanine)
-        ("CC(N)C(=O)O", 1, 1),        # same skeleton, undefined
-        ("CCO", 0, 0),                 # achiral
-    ]
+    cases = [("C[C@H](N)C(=O)O", 1, 0), ("CC(N)C(=O)O", 1, 1), ("CCO", 0, 0)]
     for smi, expected_total, expected_unassigned in cases:
         result = clean_smiles(smi)
-        if not (
-            result.n_stereocenters == expected_total
-            and result.n_unassigned_stereocenters == expected_unassigned
-        ):
-            failures.append(
-                f"  [stereo] input={smi!r}\n"
-                f"    expected: n_stereocenters={expected_total} n_unassigned={expected_unassigned}\n"
-                f"    actual:   n_stereocenters={result.n_stereocenters!r} "
-                f"n_unassigned={result.n_unassigned_stereocenters!r}"
-            )
-
-    # A row that does NOT resolve to a single structure must report
-    # None for both fields, never 0 -- 0 would falsely imply "checked,
-    # achiral" when really nothing was checked at all.
+        if not (result.n_stereocenters == expected_total and result.n_unassigned_stereocenters == expected_unassigned):
+            failures.append(f"  [stereo] input={smi!r}\n    expected: n_stereocenters={expected_total} n_unassigned={expected_unassigned}\n    actual:   n_stereocenters={result.n_stereocenters!r} n_unassigned={result.n_unassigned_stereocenters!r}")
     mixture_result = clean_smiles("CCN.c1ccccc1O")
-    if not (
-        mixture_result.n_stereocenters is None
-        and mixture_result.n_unassigned_stereocenters is None
-    ):
-        failures.append(
-            "  [stereo] mixture row should report None/None for stereocenter "
-            f"fields, got n_stereocenters={mixture_result.n_stereocenters!r} "
-            f"n_unassigned={mixture_result.n_unassigned_stereocenters!r}"
-        )
-
+    if not (mixture_result.n_stereocenters is None and mixture_result.n_unassigned_stereocenters is None):
+        failures.append(f"  [stereo] mixture row should report None/None for stereocenter fields, got n_stereocenters={mixture_result.n_stereocenters!r} n_unassigned={mixture_result.n_unassigned_stereocenters!r}")
     return failures
-
-
 def _run_duplicate_self_tests() -> list[str]:
-    """Dataset-level duplicate-resolution tests using an in-memory frame."""
     failures = []
-
-    # Case 1: same structure (different SMILES spellings), same target
-    # -> one representative retained, the other demoted to `duplicate`.
-    df = pd.DataFrame({
-        "SMILES_raw": ["CCO", "OCC"],  # both ethanol
-        "Y": [1, 1],
-    })
+    df = pd.DataFrame({"SMILES_raw": ["CCO", "OCC"], "Y": [1, 1]})
     results = df["SMILES_raw"].apply(clean_smiles)
     df["cleaning_status"] = results.apply(lambda r: r.status)
     df["inchikey"] = results.apply(lambda r: r.inchikey)
     df["review_reason"] = ""
     resolved, stats = _resolve_duplicates(df, "cleaning_status", "inchikey", target_col="Y")
-    if not (
-        resolved.loc[0, "cleaning_status"] == STATUS_CLEAN
-        and resolved.loc[1, "cleaning_status"] == STATUS_DUPLICATE
-        and stats["duplicate_groups"] == 1
-        and stats["conflicting_duplicate_groups"] == 0
-    ):
+    if not (resolved.loc[0, "cleaning_status"] == STATUS_CLEAN and resolved.loc[1, "cleaning_status"] == STATUS_DUPLICATE and stats["duplicate_groups"] == 1 and stats["conflicting_duplicate_groups"] == 0):
         failures.append("  [duplicate] same-target duplicate did not collapse as expected")
-
-    # Case 2: same structure, conflicting target -> both flagged, neither
-    # silently kept.
-    df2 = pd.DataFrame({
-        "SMILES_raw": ["CCO", "OCC"],
-        "Y": [1, 0],
-    })
+    df2 = pd.DataFrame({"SMILES_raw": ["CCO", "OCC"], "Y": [1, 0]})
     results2 = df2["SMILES_raw"].apply(clean_smiles)
     df2["cleaning_status"] = results2.apply(lambda r: r.status)
     df2["inchikey"] = results2.apply(lambda r: r.inchikey)
     df2["review_reason"] = ""
     resolved2, stats2 = _resolve_duplicates(df2, "cleaning_status", "inchikey", target_col="Y")
-    if not (
-        (resolved2["cleaning_status"] == STATUS_DUPLICATE).all()
-        and stats2["conflicting_duplicate_groups"] == 1
-        and stats2["conflicting_duplicate_rows"] == 2
-    ):
+    if not ((resolved2["cleaning_status"] == STATUS_DUPLICATE).all() and stats2["conflicting_duplicate_groups"] == 1 and stats2["conflicting_duplicate_rows"] == 2):
         failures.append("  [duplicate] conflicting-target duplicate was not fully flagged")
-
-    # Case 3: no target_col supplied -> conservatively flag both, since
-    # agreement can't be verified (never guess).
     df3 = pd.DataFrame({"SMILES_raw": ["CCO", "OCC"]})
     results3 = df3["SMILES_raw"].apply(clean_smiles)
     df3["cleaning_status"] = results3.apply(lambda r: r.status)
@@ -1187,8 +820,6 @@ def _run_duplicate_self_tests() -> list[str]:
     resolved3, stats3 = _resolve_duplicates(df3, "cleaning_status", "inchikey", target_col=None)
     if not (resolved3["cleaning_status"] == STATUS_DUPLICATE).all():
         failures.append("  [duplicate] no-target-col duplicate was not conservatively flagged")
-
-    # Case 4: unique structures -> no duplicate_group_id assigned.
     df4 = pd.DataFrame({"SMILES_raw": ["CCO", "CCN"], "Y": [1, 0]})
     results4 = df4["SMILES_raw"].apply(clean_smiles)
     df4["cleaning_status"] = results4.apply(lambda r: r.status)
@@ -1197,113 +828,106 @@ def _run_duplicate_self_tests() -> list[str]:
     resolved4, stats4 = _resolve_duplicates(df4, "cleaning_status", "inchikey", target_col="Y")
     if not (resolved4["duplicate_group_id"].isna().all() and stats4["duplicate_groups"] == 0):
         failures.append("  [duplicate] unique structures were incorrectly grouped")
+    return failures
 
+def _run_new_audit_self_tests() -> list[str]:
+    """Production regression: E/Z, R/S, isotope, tautomer - isomers preserved."""
+    failures = []
+    # Fully RDKit-based E/Z - no heuristic fallback
+    for smi, exp_a, exp_u in [("C/C=C/C",1,0), ("CC=CC",0,1), ("CC=C",0,0), ("C/C=C\\C",1,0)]:
+        r = clean_smiles(smi)
+        if r.n_assigned_ez != exp_a or r.n_unassigned_ez != exp_u:
+            failures.append(f"  [ez] {smi!r} exp a={exp_a} u={exp_u} got a={r.n_assigned_ez} u={r.n_unassigned_ez}")
+    # R/S preserved - full InChIKey includes stereo
+    df_rs = pd.DataFrame({"SMILES_raw":["C[C@H](O)CC","C[C@@H](O)CC"],"Y":[1,1]})
+    res = df_rs["SMILES_raw"].apply(clean_smiles)
+    df_rs["cleaning_status"]=res.apply(lambda x:x.status); df_rs["inchikey"]=res.apply(lambda x:x.inchikey)
+    df_rs["review_reason"]=""
+    resolved,_=_resolve_duplicates(df_rs,"cleaning_status","inchikey",target_col="Y")
+    if (resolved["cleaning_status"] != STATUS_CLEAN).any():
+        failures.append("  [duplicate] R/S incorrectly collapsed - should preserve enantiomers")
+    # E/Z preserved
+    df_ez = pd.DataFrame({"SMILES_raw":["C/C=C/C","C/C=C\\C"],"Y":[1,1]})
+    res_ez = df_ez["SMILES_raw"].apply(clean_smiles)
+    df_ez["cleaning_status"]=res_ez.apply(lambda x:x.status); df_ez["inchikey"]=res_ez.apply(lambda x:x.inchikey)
+    df_ez["review_reason"]=""
+    resolved_ez,_=_resolve_duplicates(df_ez,"cleaning_status","inchikey",target_col="Y")
+    if (resolved_ez["cleaning_status"] != STATUS_CLEAN).any():
+        failures.append("  [duplicate] E/Z incorrectly collapsed")
+    # isotope
+    r_iso = clean_smiles("[13CH4]")
+    if not getattr(r_iso, 'has_isotope', False) or r_iso.status != STATUS_CLEAN:
+        failures.append("  [isotope] [13CH4] should be clean")
+    # tautomer - audit only, grouped not deduped
+    r_tau1 = clean_smiles("CC(=O)CC(=O)C")
+    r_tau2 = clean_smiles("CC(O)=CC(=O)C")
+    if getattr(r_tau1, 'has_tautomer', False) is False:
+        failures.append("  [tautomer] acetylacetone should flag has_tautomer")
+    # if both have same first block, they should get same group id (when in dataset) but remain distinct rows
+    if getattr(r_tau1, 'tautomer_canonical_firstblock', None) != getattr(r_tau2, 'tautomer_canonical_firstblock', None):
+        failures.append("  [tautomer] keto/enol should share first block")
     return failures
 
 
 def run_self_test() -> bool:
-    """
-    Exercise the cleaner against fixed, known cases (per-row
-    classification, stereocenter auditing, and dataset-level duplicate
-    resolution) and assert the expected outcome for each. Intended as
-    a quick, reviewable correctness check that requires no data file
-    on disk.
-    """
-    failures = (
-        _run_fragment_self_tests()
-        + _run_stereocenter_self_tests()
-        + _run_duplicate_self_tests()
-    )
-
+    failures = (_run_fragment_self_tests() + _run_stereocenter_self_tests() + _run_duplicate_self_tests() + _run_new_audit_self_tests())
     if failures:
         print("SELF-TEST FAILURES:\n" + "\n".join(failures))
         return False
-
     print("ALL SELF-TESTS PASSED")
     return True
-
-
-# =======================================================================
-# CLI
-# =======================================================================
-
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Validate, fragment-analyze, and conservatively "
-                     "standardize SMILES data for a toxicology ML pipeline. "
-                     "Produces <output>_clean.csv-style clean/review/report "
-                     "files; never guesses at ambiguous structures.",
-    )
-    parser.add_argument("--input", "-i", help="Path to the input CSV file.")
-    parser.add_argument("--output", "-o", help="Path to write the clean CSV.")
-    parser.add_argument(
-        "--smiles-col", default="SMILES",
-        help="Name of the SMILES column in the input file (default: SMILES).",
-    )
-    parser.add_argument(
-        "--report", default=None,
-        help="Path to write the JSON audit report "
-             "(default: <output stem>_report.json).",
-    )
-    parser.add_argument(
-        "--review-output", default=None,
-        help="Path to write the review CSV "
-             "(default: <output stem>_review.csv).",
-    )
-    parser.add_argument(
-        "--target-col", default=None,
-        help="Optional label column used ONLY to decide whether "
-             "structural duplicates agree well enough to auto-collapse "
-             "to one representative row. Never used to decide how a "
-             "molecule is cleaned. If omitted, duplicate groups are "
-             "conservatively routed to review.",
-    )
-    parser.add_argument(
-        "--log-level", default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Logging verbosity (default: INFO).",
-    )
-    parser.add_argument(
-        "--self-test", action="store_true",
-        help="Run the built-in correctness test suite and exit "
-             "(no --input/--output required).",
-    )
+    parser = argparse.ArgumentParser(description="Conservative SMILES cleaning for toxicity ML. If run without --input/--output, automatically cleans all endpoints in data/ .")
+    parser.add_argument("--input", "-i", default=None, help="Path to input CSV (optional - if omitted, batch mode cleans all endpoints in data/).")
+    parser.add_argument("--output", "-o", default=None, help="Path to write clean CSV (optional).")
+    parser.add_argument("--smiles-col", default="SMILES", help="SMILES column name (default: SMILES).")
+    parser.add_argument("--report", default=None, help="Path to write JSON audit report.")
+    parser.add_argument("--review-output", default=None, help="Path to write review CSV.")
+    parser.add_argument("--target-col", default=None, help="Label column for duplicate agreement check (optional).")
+    parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Logging verbosity.")
+    parser.add_argument("--self-test", action="store_true", help="Run built-in tests and exit.")
     return parser
 
+# Default endpoints - batch mode (original behavior you had)
+DEFAULT_ENDPOINTS = [
+    ("data/Ames_raw.csv", "data/Ames_clean.csv", "Overall"),
+    ("data/CYP3A4_raw.csv", "data/CYP3A4_clean.csv", "Y"),
+    ("data/hERG_raw.csv", "data/hERG_clean.csv", "Y"),
+    ("data/DILI_raw.csv", "data/DILI_clean.csv", "Y"),
+    ("data/Teratogenicity_raw.csv", "data/Teratogenicity_clean.csv", "Y"),
+]
 
 def main(argv: Optional[list[str]] = None) -> int:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
-
-    logging.basicConfig(
-        level=getattr(logging, args.log_level),
-        format="%(asctime)s [%(levelname)s] %(message)s",
-    )
-
+    logging.basicConfig(level=getattr(logging, args.log_level), format="%(asctime)s [%(levelname)s] %(message)s")
     if args.self_test:
         return 0 if run_self_test() else 1
 
-    if not args.input or not args.output:
-        parser.error("--input and --output are required unless --self-test is given.")
+    # CLI mode: if --input and --output supplied, clean single file
+    if args.input and args.output:
+        clean_dataset(input_path=args.input, output_path=args.output, smiles_col=args.smiles_col, report_path=args.report, review_path=args.review_output, target_col=args.target_col)
+        return 0
 
-    clean_dataset(
-        input_path=args.input,
-        output_path=args.output,
-        smiles_col=args.smiles_col,
-        report_path=args.report,
-        review_path=args.review_output,
-        target_col=args.target_col,
-    )
+    # CLI mode: only --input supplied without --output -> error with helpful message
+    if args.input and not args.output:
+        parser.error("--output is required when --input is supplied. Or run without arguments to clean all endpoints in data/.")
+
+    # AUTO-RUN BATCH MODE (original behavior): no args -> clean all endpoints
+    print("\n=== AUTO-RUN BATCH MODE: cleaning all endpoints in data/ ===")
+    for inp, out, tgt in DEFAULT_ENDPOINTS:
+        if not Path(inp).exists():
+            print(f"  Skipping {inp} (not found)")
+            continue
+        try:
+            print(f"\n--- {inp} -> {out} (target_col={tgt}) ---")
+            clean_dataset(input_path=inp, output_path=out, smiles_col=args.smiles_col, target_col=tgt)
+        except Exception as e:
+            print(f"  FAILED {inp}: {e}")
+            import traceback
+            traceback.print_exc()
+    print("\n=== BATCH CLEANING DONE ===")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())
-
-'''
-python clean_smiles.py --input data\Ames_raw.csv --output data\Ames_clean.csv
-python clean_smiles.py --input data\Teratogenicity_raw.csv --output data\Teratogenicity_clean.csv
-python clean_smiles.py --input data\hERG_raw.csv --output data\hERG_clean.csv
-python clean_smiles.py --input data\CYP3A4_raw.csv --output data\CYP3A4_clean.csv
-python clean_smiles.py --input data\DILI_raw.csv --output data\DILI_clean.csv    
-'''
