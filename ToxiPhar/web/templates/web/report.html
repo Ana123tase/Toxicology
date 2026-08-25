@@ -2,96 +2,177 @@
 
 {% block title %}ToxiPhar — Report{% endblock %}
 
+{% block extra_css %}
+<style>
+  .report-wrap{ color:#111; }
+  .report-wrap .card{
+    background:#ffffff !important;
+    border:1px solid #e5e7eb !important;
+    border-radius:12px;
+    padding:18px 20px;
+    margin-bottom:16px;
+    color:#111 !important;
+  }
+  .report-wrap h1{ color:#111; margin:0 0 4px 0; }
+  .report-wrap h2{ color:#111; font-size:1.05rem; margin:0 0 10px 0; }
+  .report-wrap .muted{ color:#6b7280 !important; }
+  .drug-name{ font-size:1.35rem; font-weight:800; color:#111 !important; margin:0; }
+  .drug-sub{ color:#6b7280 !important; font-size:0.85rem; margin-top:4px; }
+  .mono{
+    font-family:ui-monospace, SFMono-Regular, Menlo, monospace;
+    word-break:break-all;
+    font-size:0.88rem;
+    background:#f3f4f6 !important;
+    color:#111 !important;
+    padding:8px 10px;
+    border-radius:6px;
+    border:1px solid #e5e7eb !important;
+  }
+  .table-scroll{ overflow-x:auto; }
+  .report-wrap table{ width:100%; border-collapse:collapse; }
+  .report-wrap th{
+    text-align:left;
+    font-size:0.8rem;
+    color:#6b7280 !important;
+    font-weight:700;
+    padding:10px 12px;
+    border-bottom:2px solid #111 !important;
+    background:#fff !important;
+  }
+  .report-wrap td{
+    padding:11px 12px;
+    border-bottom:1px solid #f0f0f0 !important;
+    font-size:0.9rem;
+    color:#111 !important;
+    background:#fff !important;
+  }
+  .badge{ display:inline-block; padding:3px 10px; border-radius:999px; font-size:0.72rem; font-weight:800; }
+  .badge-safe{ background:#dcfce7 !important; color:#166534 !important; border:1px solid #bbf7d0; }
+  .badge-low{ background:#dcfce7 !important; color:#166534 !important; }
+  .badge-moderate{ background:#fef9c3 !important; color:#854d0e !important; border:1px solid #fde68a; }
+  .badge-warn{ background:#fef9c3 !important; color:#854d0e !important; }
+  .badge-high{ background:#fee2e2 !important; color:#991b1b !important; border:1px solid #fecaca; }
+  .badge-danger{ background:#fee2e2 !important; color:#991b1b !important; }
+  .badge-very-low{ background:#dbeafe !important; color:#1e40af !important; }
+  .btn{ padding:8px 14px; border-radius:8px; border:1px solid #d1d5db; background:#fff; color:#111 !important; cursor:pointer; font-size:0.85rem; text-decoration:none; display:inline-block; }
+  .btn-primary{ background:#111 !important; color:#fff !important; border-color:#111 !important; }
+</style>
+{% endblock %}
+
 {% block content %}
+<div class="report-wrap">
 
+<div style="margin-bottom:18px;">
   <h1>Toxicity screening report</h1>
-  <p class="muted">Computational predictions from ToxiPhar's production models, generated for prioritization — not a substitute for experimental validation.</p>
+  <p class="muted" style="margin:4px 0 0 0; font-size:0.85rem;">Computational predictions for prioritization — not a substitute for experimental validation.</p>
+</div>
 
-  <form method="post" class="card">
-    {% csrf_token %}
-    <div class="field-group">
-      <label for="smiles">SMILES</label>
-      <input
-        type="text"
-        id="smiles"
-        name="smiles"
-        class="mono"
-        placeholder="e.g. CC(=O)Oc1ccccc1C(=O)O"
-        value="{{ smiles_submitted|default:'' }}"
-        autocomplete="off"
-        required
-      >
-    </div>
-    <button type="submit" class="btn btn-primary">Generate report</button>
-  </form>
+{% if error %}
+  <div class="card" style="border-color:#fecaca !important; background:#fff1f2 !important;">
+    <p style="color:#991b1b !important; margin:0; font-size:0.9rem;">{{ error }}</p>
+  </div>
+{% endif %}
 
-  {% if error %}
-    <ul class="messages">
-      <li class="error">{{ error }}</li>
-    </ul>
-  {% endif %}
+{% if not result and not results %}
+  <div class="card"><p style="margin:0; color:#111 !important;">No prediction found. Go to <a href="{% url 'web:predict' %}" style="color:#111; text-decoration:underline;">predict page</a>.</p></div>
+{% endif %}
 
-  {% if result %}
+{% if results %}
+  {% for item in results %}
     <div class="card">
-      <h2>Compound identifiers</h2>
-      <p class="muted">Input SMILES</p>
-      <p class="data">{{ result.smiles_input }}</p>
-      <p class="muted">Standardized SMILES</p>
-      <p class="data">{{ result.smiles_cleaned }}</p>
+      <p class="drug-name">
+        {% if meta and meta.brand_name %}{{ meta.brand_name }}{% if is_multi_drug %} <span style="font-weight:400; font-size:0.85rem; color:#6b7280;">— Drug {{ forloop.counter }}</span>{% endif %}
+        {% elif item.report and item.report.brand_name %}{{ item.report.brand_name }}
+        {% else %}Compound {{ forloop.counter }}{% endif %}
+      </p>
+      {% if meta.generic_name or meta.chemical_name %}
+        <p class="drug-sub">
+          {% if meta.generic_name %}Generic: <strong style="color:#111;">{{ meta.generic_name }}</strong>{% endif %}
+          {% if meta.generic_name and meta.chemical_name %} · {% endif %}
+          {% if meta.chemical_name %}Chemical: <strong style="color:#111;">{{ meta.chemical_name }}</strong>{% endif %}
+        </p>
+      {% endif %}
+
+      <div style="margin-top:12px;">
+        <div style="font-size:0.75rem; color:#6b7280; margin-bottom:4px; font-weight:600;">SMILES</div>
+        <div class="mono">{{ item.smiles }}</div>
+      </div>
+
+      <div style="margin-top:16px;">
+        <h2>Predicted endpoints</h2>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Endpoint</th><th>Probability</th><th>Risk band</th></tr></thead>
+            <tbody>
+              {% for ep in item.endpoints %}
+                <tr>
+                  <td><strong style="color:#111;">{{ ep.name }}</strong></td>
+                  <td style="color:#111; font-weight:600;">{{ ep.probability_percent|floatformat:1 }}%</td>
+                  <td><span class="badge badge-{{ ep.risk_level }}">{{ ep.risk_level|upper }}</span></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+
+{% elif result %}
+  <div class="card">
+    <p class="drug-name">
+      {% if meta and meta.brand_name %}{{ meta.brand_name }}
+      {% elif report and report.brand_name %}{{ report.brand_name }}
+      {% else %}Predicted compound{% endif %}
+    </p>
+    {% if meta.generic_name or meta.chemical_name %}
+      <p class="drug-sub">
+        {% if meta.generic_name %}Generic: <strong style="color:#111;">{{ meta.generic_name }}</strong> · {% endif %}
+        {% if meta.chemical_name %}Chemical: <strong style="color:#111;">{{ meta.chemical_name }}</strong>{% endif %}
+      </p>
+    {% endif %}
+
+    <div style="margin-top:12px;">
+      <div style="font-size:0.75rem; color:#6b7280; margin-bottom:4px; font-weight:600;">SMILES</div>
+      <div class="mono">{{ result.smiles_input|default:smiles|default:meta.smiles }}</div>
     </div>
 
-    <div class="card">
+    <div style="margin-top:16px;">
       <h2>Predicted endpoints</h2>
       <div class="table-scroll">
         <table>
-          <thead>
-            <tr>
-              <th>Endpoint</th>
-              <th>Probability</th>
-              <th>Predicted class</th>
-              <th>Risk band</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Endpoint</th><th>Probability</th><th>Risk band</th></tr></thead>
           <tbody>
             {% for ep in endpoints %}
               <tr>
-                <td>{{ ep.name }}</td>
-                <td class="mono">{{ ep.probability }}</td>
-                <td>{{ ep.predicted_class }}</td>
-                <td>
-                  <span class="badge badge-{{ ep.risk_level }}">
-                    {{ ep.risk_level|upper }}
-                  </span>
-                </td>
+                <td><strong style="color:#111;">{{ ep.name }}</strong></td>
+                <td style="color:#111; font-weight:600;">{{ ep.probability_percent|floatformat:1 }}%</td>
+                <td><span class="badge badge-{{ ep.risk_level }}">{{ ep.risk_level|upper }}</span></td>
               </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
     </div>
+  </div>
+{% endif %}
 
-    <div class="card">
-      <h2>Interpretation</h2>
-      <p>
-        These probabilities reflect the likelihood each endpoint's production model assigns to
-        a positive (adverse) finding, based on patterns learned from prior labeled compounds.
-        They are intended to help prioritize which endpoints warrant closer scrutiny —
-        not to confirm or rule out toxicity on their own.
-      </p>
-      <p>
-        A compound flagged here in the <span class="badge badge-danger">DANGER</span> band
-        should be treated as a candidate for early experimental follow-up
-        (e.g. in vitro assay confirmation), not as a compound already disqualified.
-        Likewise, a <span class="badge badge-safe">SAFE</span> band result reduces
-        priority for that endpoint but does not replace assay-based confirmation
-        before advancing a candidate.
-      </p>
-      <p class="muted">
-        Model outputs are probabilistic estimates from machine learning classifiers and
-        carry inherent uncertainty. Use alongside, not in place of, standard experimental
-        toxicology workflows.
-      </p>
-    </div>
-  {% endif %}
+{% if results or result %}
+  <div class="card" style="background:#f9fafb !important;">
+    <h2>Interpretation</h2>
+    <p style="font-size:0.85rem; color:#111 !important; margin:0;">
+      <span class="badge badge-danger">DANGER</span> ≥75% → early assay.
+      <span class="badge badge-safe">SAFE</span> <30% → lower priority. Percentages = model confidence.
+    </p>
+  </div>
+{% endif %}
 
+{# ONLY BUTTON, NO FORM BOX #}
+<div style="margin-top:24px; text-align:left;">
+  <a href="{% url 'web:predict' %}" class="btn btn-primary" style="padding:10px 18px; font-size:0.9rem; font-weight:700;">
+    Generate new predictions
+  </a>
+</div>
+
+</div>
 {% endblock %}
