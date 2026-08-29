@@ -1,8 +1,9 @@
-# subscriptions/decorators.py
 from functools import wraps
 from django.shortcuts import redirect
 from django.contrib import messages
 from django.utils import timezone
+
+from reports.models import PredictionReport
 
 
 def _get_active_subscription(request):
@@ -23,17 +24,9 @@ def _get_active_subscription(request):
     try:
         sub = profile.subscription
     except Exception:
-        # Covers Subscription.DoesNotExist (no row yet) and AttributeError
-        # (profile.subscription relation misconfigured). If your signup flow
-        # auto-creates a Free subscription for every new profile, this
-        # branch should rarely fire — if it does, it likely means a profile
-        # exists with no subscription row at all.
         messages.warning(request, "You need an active subscription to access this feature.")
         return None, redirect('subscription_plans')
 
-    # Auto-expire check — mirrors Subscription.is_expired / has_feature()
-    # in models.py. Kept here too since this decorator runs before those
-    # model methods would otherwise be called.
     if sub.expires_at and sub.expires_at < timezone.now():
         if sub.is_active:
             sub.is_active = False
@@ -50,16 +43,45 @@ def _get_active_subscription(request):
 
 def premium_required(view_func):
     """
-    Requires ANY active, non-expired subscription — including Free tier.
-    Per-plan daily prediction limits (Free = 2/day, Starter = 10/day, etc.)
-    are NOT enforced here; that happens at the point of use via
-    Subscription.can_make_prediction() / record_prediction().
+    Requires an active, non-expired subscription — covers every plan
+    (Free, Starter, Growth, Unlimited; monthly/semi_annual/yearly alike) —
+    AND enforces that plan's daily prediction limit, using PredictionReport
+    as the source of truth for how many predictions the user has already
+    made today.
+
+    - On GET: only subscription validity is checked (form renders as
+      normal; no quota check since no prediction is being made yet).
+    - On POST: today's PredictionReport rows for this user are counted
+      BEFORE the view runs. If the plan has a numeric daily_prediction_limit
+      and the count already meets/exceeds it, the view is never called and
+      the user is redirected with a warning instead. Unlimited plans
+      (daily_prediction_limit=None, e.g. the Unlimited tier) skip the count
+      entirely and always pass through.
     """
     @wraps(view_func)
     def _wrapped_view(request, *args, **kwargs):
         sub, error_redirect = _get_active_subscription(request)
         if error_redirect:
             return error_redirect
+
+        if request.method == 'POST':
+            limit = sub.get_daily_prediction_limit()
+            if limit is not None:  # None == unlimited plan, skip the count entirely
+                today = timezone.localdate()
+                used_today = PredictionReport.objects.filter(
+                    user=request.user,
+                    created_at__date=today,
+                ).count()
+
+                if used_today >= limit:
+                    messages.warning(
+                        request,
+                        f"You've reached your daily limit of {limit} prediction(s) "
+                        f"for your current plan ({sub.plan.name}). "
+                        f"Please upgrade or wait until tomorrow."
+                    )
+                    return redirect('subscription_plans')
+
         return view_func(request, *args, **kwargs)
     return _wrapped_view
 
@@ -68,8 +90,6 @@ def subscription_feature_required(feature_name):
     """
     Gates a view on a specific feature flag in plan.features, e.g.
     @subscription_feature_required('some_feature')
-    Not currently used anywhere in ToxiPhar, but kept available in case a
-    future plan-specific (non-quota) feature difference is needed.
     """
     def decorator(view_func):
         @wraps(view_func)

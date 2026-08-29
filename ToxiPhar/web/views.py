@@ -1,13 +1,8 @@
 """
 web/views.py - Fixed for your actual project layout:
-- ToxiPhar/predictor/services.py contains PredictionService (3692 bytes)
-- ToxiPhar/web/views.py was failing with ModuleNotFoundError: web.services
+- ToxiPhar/predictor/services.py contains PredictionService
 
-This version imports from predictor.services, not web.services.
-Also supports your 870-line predict.html isomerism-aware fields:
-  smiles (isomeric, preserves R/S @ and E/Z /\ and [13C] isotopes)
-  smiles_list_json (multi-drug dot-separated)
-  is_multi_drug, stereo_audit_json, full_chemistry_json, model_features_json
+This version imports from predictor.services
 Mapped to:
   clean_smiles.py: R/S preserved via full InChIKey /t layer, E/Z via /b layer, has_isotope, has_tautomer
   featurize.py: MODEL_STEREO_FEATURES + ECFP 2048 + ECFP stereo 2048 includeChirality=True
@@ -23,6 +18,10 @@ from django.shortcuts import render, redirect
 from django.urls import reverse
 from django.contrib.auth.decorators import login_required
 from subscriptions.decorators import premium_required
+from django.core.paginator import Paginator
+from django.shortcuts import render
+from reports.models import PredictionReport
+from datetime import date
 
 logger = logging.getLogger(__name__)
 
@@ -217,7 +216,6 @@ def predict_view(request):
 
 
 @login_required
-@premium_required
 def report_view(request):
     results = request.session.pop("predict_results", None)
     result_single = request.session.pop("predict_result", None)
@@ -307,3 +305,54 @@ def report_view(request):
         context["generic_name"] = results[0]["generic_name"]
         context["chemical_name"] = results[0]["chemical_name"]
     return render(request, "web/report.html", context)
+
+
+@login_required
+def prediction_history(request):
+    reports = PredictionReport.objects.filter(user=request.user)
+
+    today = date.today()
+
+    date_from_str = request.GET.get("date_from")
+    date_to_str = request.GET.get("date_to")
+
+    try:
+        date_from = date.fromisoformat(date_from_str) if date_from_str else today
+    except ValueError:
+        date_from = today
+
+    try:
+        date_to = date.fromisoformat(date_to_str) if date_to_str else today
+    except ValueError:
+        date_to = today
+
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
+
+    show_all_dates = request.GET.get("all_dates") == "1"
+    if not show_all_dates:
+        reports = reports.filter(created_at__date__gte=date_from, created_at__date__lte=date_to)
+
+    query = request.GET.get("q", "").strip()
+    if query:
+        reports = reports.filter(brand_name__icontains=query)
+
+    paginator = Paginator(reports, 20)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    endpoints = ["DILI", "Ames", "Teratogenicity", "CYP3A4", "hERG"]
+    for report in page_obj:
+        preds = report.result.get("predictions", {})
+        report.display_predictions = {
+            key: round(preds.get(key, {}).get("probability", 0) * 100, 1)
+            for key in endpoints
+        }
+
+    context = {
+        "page_obj": page_obj,
+        "date_from": date_from,
+        "date_to": date_to,
+        "show_all_dates": show_all_dates,
+        "query": query,
+    }
+    return render(request, "web/history.html", context)

@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Prediction History{% endblock %}
+
+{% block extra_css %}
+  .ph-header{ margin-bottom: var(--gap); }
+  .ph-header p.subtitle{ color:var(--muted); font-size:0.9rem; margin:0; }
+
+  .ph-filter-form{
+    display:flex;
+    gap: var(--gap);
+    align-items:end;
+    flex-wrap:wrap;
+  }
+  .ph-filter-form .field-group{ margin-bottom:0; flex:1 1 160px; min-width:150px; }
+  .ph-filter-form .field-group input{ margin-bottom:0; }
+
+  .ph-checkbox{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    font-size:0.85rem;
+    color:var(--muted);
+    min-height:var(--touch-min);
+  }
+
+  .ph-actions{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .ph-actions .btn{ width:auto; }
+  .ph-reset-link{ font-size:0.85rem; color:var(--muted); text-decoration:underline; }
+
+  table.ph-table{ table-layout:auto; width:100%; }
+  table.ph-table td.smiles{
+    font-family:var(--font-mono);
+    font-size:0.78rem;
+    color:var(--ink-soft);
+    white-space:normal;
+    word-break:break-all;
+    min-width:220px;
+    max-width:340px;
+  }
+  table.ph-table td, table.ph-table th{ white-space:nowrap; }
+  table.ph-table td.smiles{ white-space:normal; }
+
+  .prob-plain{ color:var(--ink); font-variant-numeric:tabular-nums; }
+  .prob-high{ color:var(--ink); font-weight:700; font-variant-numeric:tabular-nums; }
+{% endblock %}
+
+{% block content %}
+    <div class="ph-header">
+        <h1>Prediction History</h1>
+        <p class="subtitle">Review past toxicology predictions filtered by date range or compound name.</p>
+    </div>
+
+    <div class="card">
+        <form method="get" class="ph-filter-form">
+            <div class="field-group">
+                <label for="date_from">From</label>
+                <input type="date" id="date_from" name="date_from" value="{{ date_from|date:'Y-m-d' }}">
+            </div>
+            <div class="field-group">
+                <label for="date_to">To</label>
+                <input type="date" id="date_to" name="date_to" value="{{ date_to|date:'Y-m-d' }}">
+            </div>
+            <div class="field-group">
+                <label for="q">Search</label>
+                <input type="text" id="q" name="q" placeholder="e.g. Paracetamol" value="{{ query }}">
+            </div>
+            <div class="ph-checkbox">
+                <input type="checkbox" name="all_dates" id="all_dates" value="1" {% if show_all_dates %}checked{% endif %}>
+                <label for="all_dates" style="margin:0;">Show all dates</label>
+            </div>
+            <div class="ph-actions">
+                <button type="submit" class="btn btn-primary">Search</button>
+                <a href="{% url 'web:prediction_history' %}" class="ph-reset-link">Reset</a>
+            </div>
+        </form>
+    </div>
+
+    <ul class="messages">
+        <li class="warning">During your next experiments, remember to pay attention on an endpoint where your candidate drug has shown probability of toxicity above 20%.</li>
+    </ul>
+
+    {% if page_obj %}
+    <div class="card table-scroll">
+        <table class="ph-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Brand Name</th>
+                    <th>Generic Name</th>
+                    <th>Chemical Name</th>
+                    <th>SMILES</th>
+                    <th>DILI</th>
+                    <th>Ames</th>
+                    <th>Teratogenicity</th>
+                    <th>CYP3A4</th>
+                    <th>hERG</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for report in page_obj %}
+                <tr>
+                    <td>{{ report.created_at|date:"Y-m-d H:i" }}</td>
+                    <td>{{ report.brand_name }}</td>
+                    <td>{{ report.generic_name|default:"—" }}</td>
+                    <td>{{ report.chemical_name|default:"—" }}</td>
+                    <td class="smiles">{{ report.smiles }}</td>
+                    <td class="{% if report.display_predictions.DILI >= 20 %}prob-high{% else %}prob-plain{% endif %}">{{ report.display_predictions.DILI }}%</td>
+                    <td class="{% if report.display_predictions.Ames >= 20 %}prob-high{% else %}prob-plain{% endif %}">{{ report.display_predictions.Ames }}%</td>
+                    <td class="{% if report.display_predictions.Teratogenicity >= 20 %}prob-high{% else %}prob-plain{% endif %}">{{ report.display_predictions.Teratogenicity }}%</td>
+                    <td class="{% if report.display_predictions.CYP3A4 >= 20 %}prob-high{% else %}prob-plain{% endif %}">{{ report.display_predictions.CYP3A4 }}%</td>
+                    <td class="{% if report.display_predictions.hERG >= 20 %}prob-high{% else %}prob-plain{% endif %}">{{ report.display_predictions.hERG }}%</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="ph-actions" style="justify-content:center; margin-top:var(--gap); font-size:0.85rem;">
+        {% if page_obj.has_previous %}
+            <a href="?page={{ page_obj.previous_page_number }}&date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}&q={{ query }}">← Previous</a>
+        {% endif %}
+        <span class="muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}&date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}&q={{ query }}">Next →</a>
+        {% endif %}
+    </div>
+    {% else %}
+        <div class="card">
+            <p class="muted" style="text-align:center; margin:0;">No predictions found for this filter.</p>
+        </div>
+    {% endif %}
+{% endblock %}

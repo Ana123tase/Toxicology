@@ -9,7 +9,7 @@
 <style>
   :root{
     /* ---------- Core palette: clinical, light, calm ---------- */
-    --paper:#82d5a2;          /* page background — cool, faint mint-white */
+    --paper:#82d5a2;          /*  - page background — cool, faint mint-white */
     --surface:#FFFFFF;        /* card / panel background */
     --surface-alt:#EEF5F2;    /* secondary surface, e.g. hovers, raised rows */
     --ink:#132621;            /* primary text — warm near-black, not pure black */
@@ -462,9 +462,15 @@
     </div>
 
     <nav class="site-nav">
-      <a href="{% url 'web:home' %}">Predict</a>
-      <a href="{% url 'web:report' %}">Reports</a>
+      <a href="{% url 'web:home' %}">Learn more about ToxiPhar</a>
+      <a href="{% url 'web:prediction_history' %}">History</a>
+      <a href="{% url 'web:predict' %}">New Prediction</a>
       {% if user.is_authenticated %}
+        {% if user.profile.subscription.is_active and not user.profile.subscription.is_expired %}
+          <span class="nav-link-btn" style="cursor:default;">Pro User</span>
+        {% else %}
+          <a href="{% url 'subscription_plans' %}">Subscribe</a>
+        {% endif %}
         <details class="account-menu">
           <summary>Account</summary>
           <div class="account-menu-list">
