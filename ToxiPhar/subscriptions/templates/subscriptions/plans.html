@@ -1,68 +1,197 @@
 {% extends 'base.html' %}
 
-{% block title %}Premium Plans - LogPhar{% endblock %}
+{% block title %}Subscription Plans - ToxiPhar{% endblock %}
+
+{% block extra_css %}
+    .plans-header { text-align: center; margin-bottom: var(--space-lg); }
+    .plans-header p { color: #666; margin-top: 6px; }
+
+    .tier-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: var(--space-md);
+    }
+    @media (min-width: 640px) {
+        .tier-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (min-width: 1000px) {
+        .tier-grid { grid-template-columns: repeat(4, 1fr); }
+    }
+
+    .tier-card { display: flex; flex-direction: column; text-align: center; position: relative; }
+    .tier-card.popular { border: 2px solid var(--green-mid); }
+    .tier-card.current { border: 2px solid var(--gold); }
+
+    .tier-ribbon {
+        position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+        background: var(--green-mid); color: white; font-size: var(--font-sm);
+        font-weight: 700; padding: 3px 12px; border-radius: 20px; white-space: nowrap;
+    }
+    .tier-ribbon.current-ribbon { background: var(--gold); }
+
+    .tier-name { font-size: var(--font-lg); font-weight: 700; margin: 6px 0 2px; }
+    .tier-limit { font-size: var(--font-sm); color: #666; margin-bottom: var(--space-sm); }
+
+    .tier-tabs {
+        display: flex; gap: 4px; background: #f0f4f2; border-radius: 8px; padding: 4px;
+        margin-bottom: var(--space-sm);
+    }
+    .tier-tab {
+        flex: 1; min-height: var(--touch-min); border: none; background: none;
+        border-radius: 6px; font-size: var(--font-sm); font-weight: 600; cursor: pointer;
+        color: #555; font-family: inherit;
+    }
+    .tier-tab.active { background: white; color: var(--green-deep); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+    .tier-price { font-size: var(--font-2xl); font-weight: 700; color: var(--green-deep); margin: 4px 0; }
+    .tier-price-sub { font-size: var(--font-sm); color: #888; margin-bottom: var(--space-sm); }
+    .tier-save { font-size: var(--font-sm); color: var(--green-mid); font-weight: 600; min-height: 1.2em; }
+
+    .tier-cta { margin-top: auto; padding-top: var(--space-sm); }
+    .tier-cta .btn { width: 100%; }
+    .tier-included {
+        display: inline-block; padding: 10px 18px; background: var(--green-pale);
+        color: var(--green-deep); border-radius: 8px; font-size: var(--font-sm); font-weight: 600;
+    }
+{% endblock %}
 
 {% block content %}
-<style>
-  .premium-wrapper{font-family:Arial, sans-serif; max-width:1000px; margin:auto; padding:20px;}
-  .premium-wrapper .header{text-align:center;margin-bottom:30px}
-  .premium-wrapper .grid{display:flex;gap:20px;flex-wrap:wrap;justify-content:center}
-  .premium-wrapper .card{background:white;border:1px solid #ddd;border-radius:10px;padding:20px;width:280px;text-align:center; box-shadow:none;}
-  .premium-wrapper .card.best{border:2px solid #16a34a;box-shadow:0 4px 12px rgba(0,0,0,0.1)}
-  .premium-wrapper .badge{background:#16a34a;color:white;padding:5px 10px;border-radius:20px;font-size:12px;display:inline-block;margin-bottom:10px}
-  .premium-wrapper .price{font-size:36px;font-weight:bold;margin:10px 0}
-  .premium-wrapper .btn-plan{display:block;padding:12px;background:#2563eb;color:white;text-decoration:none;border-radius:8px;margin-top:15px;font-weight:bold; text-align:center;}
-  .premium-wrapper .btn-plan.best{background:#16a34a}
-  .premium-wrapper .alert-box{background:#dbeafe;padding:12px;border-radius:8px;text-align:center;margin-bottom:20px}
-  .premium-wrapper .alert-warning{background:#fff8e6;border:1px solid #ffe4a3;color:#8a6500;}
-  .premium-wrapper .alert-error{background:#fff0f0;border:1px solid #ffcccc;color:#cc0000;}
-  @media(max-width:600px){
-    .premium-wrapper .card{width:100% !important;}
-  }
-</style>
+<div class="container">
 
-<div class="premium-wrapper">
-  <div class="header">
-    <h2>Upgrade to Premium</h2>
-    <p>Unlock Insurance, Reports and more</p>
-    <br>
-    <p style="font-size:13px; color:#666; margin-top:6px;">Prices shown are not fixed, we can reduce them based on the size of your Pharmacy.</p>
-    <a href="{% url 'dashboard' %}">Back to Dashboard</a>
-  </div>
-
-  {% if messages %}
-    {% for message in messages %}
-      <div class="alert-box {% if message.tags == 'warning' %}alert-warning{% elif message.tags == 'error' %}alert-error{% endif %}" style="font-weight:600;">
-        {{ message }}
-      </div>
-    {% endfor %}
-  {% endif %}
-
-  {% if current_sub %}
-  <div class="alert-box">
-    Current: {{ current_sub.plan.name }} - {% if current_sub.is_active %} {{ current_sub.days_remaining }} days left {% else %} Expired {% endif %}
-  </div>
-  {% endif %}
-
-  <div class="grid">
-    {% for plan in plans %}
-    <div class="card {% if plan.slug == 'premium-yearly' %}best{% endif %}">
-      {% if plan.slug == 'premium-yearly' %}<span class="badge">BEST VALUE</span>{% endif %}
-      <h3>{{ plan.name }}</h3>
-      <div class="price">${{ plan.price }}</div>
-      <div>{{ plan.get_billing_cycle_display }}<br><small>${{ plan.price_per_month }}/mo</small></div>
-      <hr>
-      <div style="text-align:left;font-size:14px">
-        ✔ Insurance Module<br>
-        ✔ Advanced Reports<br>
-        ✔ Purchases<br>
-        ✔ Priority Support
-      </div>
-      <a class="btn-plan {% if plan.slug == 'premium-yearly' %}best{% endif %}" href="{% url 'subscribe_plan' plan.slug %}">Subscribe Now</a>
+    <div class="plans-header">
+        <h2>Subscription Plans</h2>
+        <p>More predictions per day, unlocked as you upgrade.</p>
+        <p style="font-size:13px;">Prices shown are not fixed — contact us if your institution needs a custom plan.</p>
+        <p style="margin-top:10px;"><a href="{% url 'dashboard' %}">Back to Dashboard</a></p>
     </div>
-    {% empty %}
-    <p>No plans. Run: python manage.py seed_plans</p>
-    {% endfor %}
-  </div>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert {% if message.tags == 'warning' %}alert-warning{% elif message.tags == 'error' %}alert-error{% else %}alert-success{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    {% if current_sub %}
+    <div class="alert alert-success">
+        Current plan: <b>{{ current_sub.plan.name }}</b> —
+        {% if current_sub.is_active %}{{ current_sub.days_remaining }} day(s) left{% else %}Expired{% endif %}
+    </div>
+    {% endif %}
+
+    <div id="tierGrid" class="tier-grid"><!-- built by JS below --></div>
+
 </div>
+
+{{ plans_data|json_script:"plans-data" }}
+<span id="subscribeUrlTemplate" data-url="{% url 'subscribe_plan' 'PLAN_SLUG' %}" style="display:none"></span>
+<span id="currentSlugData" data-slug="{% if current_sub %}{{ current_sub.plan.slug }}{% endif %}" style="display:none"></span>
+
+<script>
+(function() {
+    var plans = JSON.parse(document.getElementById('plans-data').textContent);
+    var subscribeUrlTemplate = document.getElementById('subscribeUrlTemplate').dataset.url;
+    var currentSlugRaw = document.getElementById('currentSlugData').dataset.slug;
+    var currentSlug = currentSlugRaw ? currentSlugRaw : null;
+
+    var TIER_ORDER = ['free', 'starter', 'growth', 'unlimited'];
+    var CYCLE_ORDER = ['monthly', 'semi_annual', 'yearly'];
+    var POPULAR_TIER = 'growth'; // change this single line to feature a different tier
+
+    // Group plans by tier -> { monthly: plan, semi_annual: plan, yearly: plan }
+    var byTier = {};
+    plans.forEach(function(p) {
+        if (!byTier[p.tier]) byTier[p.tier] = {};
+        byTier[p.tier][p.billing_cycle] = p;
+    });
+
+    var grid = document.getElementById('tierGrid');
+
+    TIER_ORDER.forEach(function(tierKey) {
+        var cycles = byTier[tierKey];
+        if (!cycles) return;
+
+        var isFree = tierKey === 'free';
+        var firstCycle = isFree ? 'free' : CYCLE_ORDER.find(function(c) { return cycles[c]; });
+        var firstPlan = cycles[firstCycle];
+        var isCurrentTier = currentSlug && Object.keys(cycles).some(function(c) { return cycles[c].slug === currentSlug; });
+
+        var card = document.createElement('div');
+        card.className = 'card tier-card' + (tierKey === POPULAR_TIER ? ' popular' : '') + (isCurrentTier ? ' current' : '');
+
+        var ribbon = '';
+        if (isCurrentTier) {
+            ribbon = '<div class="tier-ribbon current-ribbon">Current Plan</div>';
+        } else if (tierKey === POPULAR_TIER) {
+            ribbon = '<div class="tier-ribbon">Most Popular</div>';
+        }
+
+        var limitText = firstPlan.daily_prediction_limit === null
+            ? 'Unlimited predictions/day'
+            : firstPlan.daily_prediction_limit + ' predictions/day';
+
+        var tabsHtml = '';
+        if (!isFree) {
+            tabsHtml = '<div class="tier-tabs">' + CYCLE_ORDER.filter(function(c) { return cycles[c]; }).map(function(c) {
+                var label = cycles[c].billing_cycle_display;
+                var active = c === firstCycle ? ' active' : '';
+                return '<button type="button" class="tier-tab' + active + '" data-cycle="' + c + '">' + label + '</button>';
+            }).join('') + '</div>';
+        }
+
+        var ctaHtml;
+        if (isFree) {
+            ctaHtml = isCurrentTier
+                ? '<span class="tier-included">Your Current Plan</span>'
+                : '<span class="tier-included">Included by Default</span>';
+        } else {
+            var initialUrl = subscribeUrlTemplate.replace('PLAN_SLUG', firstPlan.slug);
+            ctaHtml = '<a class="btn tier-subscribe-btn" href="' + initialUrl + '">Subscribe Now</a>';
+        }
+
+        card.innerHTML =
+            ribbon +
+            '<div class="tier-name">' + firstPlan.tier_display + '</div>' +
+            '<div class="tier-limit">' + limitText + '</div>' +
+            tabsHtml +
+            '<div class="tier-price">$<span class="price-amount">' + parseFloat(firstPlan.price).toFixed(2) + '</span></div>' +
+            '<div class="tier-price-sub">' + (isFree ? 'Forever free' : '$' + parseFloat(firstPlan.price_per_month).toFixed(2) + '/mo') + '</div>' +
+            '<div class="tier-save"></div>' +
+            '<div class="tier-cta">' + ctaHtml + '</div>';
+
+        grid.appendChild(card);
+
+        if (!isFree) {
+            var monthlyPlan = cycles['monthly'];
+            var tabs = card.querySelectorAll('.tier-tab');
+            tabs.forEach(function(tab) {
+                tab.addEventListener('click', function() {
+                    tabs.forEach(function(t) { t.classList.remove('active'); });
+                    tab.classList.add('active');
+
+                    var plan = cycles[tab.dataset.cycle];
+                    card.querySelector('.price-amount').textContent = parseFloat(plan.price).toFixed(2);
+                    card.querySelector('.tier-price-sub').textContent = '$' + parseFloat(plan.price_per_month).toFixed(2) + '/mo';
+
+                    var saveEl = card.querySelector('.tier-save');
+                    if (monthlyPlan && plan.slug !== monthlyPlan.slug) {
+                        var savePct = Math.round((1 - (parseFloat(plan.price_per_month) / parseFloat(monthlyPlan.price_per_month))) * 100);
+                        saveEl.textContent = savePct > 0 ? ('Save ' + savePct + '% vs monthly') : '';
+                    } else {
+                        saveEl.textContent = '';
+                    }
+
+                    var btn = card.querySelector('.tier-subscribe-btn');
+                    if (btn) btn.href = subscribeUrlTemplate.replace('PLAN_SLUG', plan.slug);
+                });
+            });
+        }
+    });
+
+    if (grid.children.length === 0) {
+        grid.innerHTML = '<p>No plans available. Run: python manage.py seed_plans</p>';
+    }
+})();
+</script>
 {% endblock %}

@@ -2,42 +2,61 @@
 
 {% block title %}Checkout - {{ plan.name }}{% endblock %}
 
-{% block content %}
-<style>
-  .checkout-wrapper{font-family:Arial,sans-serif; max-width:500px; margin:20px auto; padding:0 15px;}
-  .checkout-wrapper .box{background:white;padding:25px;border-radius:10px;border:1px solid #ddd}
-  .checkout-wrapper .price{text-align:center;font-size:32px;font-weight:bold}
-  .checkout-wrapper .method{background:#f9fafb;padding:15px;border-radius:8px;margin:15px 0;border:1px solid #eee}
-  .checkout-wrapper .btn-pay{display:block;padding:12px;text-align:center;text-decoration:none;border-radius:8px;margin-top:10px;font-weight:bold;}
-  .checkout-wrapper .btn-green{background:#16a34a;color:white !important}
-  .checkout-wrapper .btn-blue{background:#2563eb;color:white !important}
-  .checkout-wrapper .btn-gray{background:#e5e7eb;color:black !important}
-  .checkout-wrapper .btn-pay:hover{opacity:0.9}
-</style>
+{% block extra_css %}
+    .checkout-wrapper { max-width: 500px; margin: 0 auto; }
+    .checkout-wrapper .price { text-align: center; font-size: var(--font-2xl); font-weight: bold; margin: 8px 0; }
+    .checkout-wrapper .method {
+        background: #f9fafb; padding: var(--space-sm); border-radius: 8px;
+        margin: var(--space-sm) 0; border: 1px solid #eee; font-size: var(--font-base);
+    }
+    .checkout-wrapper .btn-pay {
+        display: block; min-height: var(--touch-min); padding: 12px;
+        text-align: center; text-decoration: none; border-radius: 8px;
+        margin-top: 10px; font-weight: bold; display: flex; align-items: center; justify-content: center;
+    }
+    .checkout-wrapper .btn-green { background: #16a34a; color: white !important; }
+    .checkout-wrapper .btn-blue { background: #2563eb; color: white !important; }
+    .checkout-wrapper .btn-gray { background: #e5e7eb; color: black !important; }
+    .checkout-wrapper .btn-pay:hover { opacity: 0.9; }
+{% endblock %}
 
+{% block content %}
+<div class="container">
 <div class="checkout-wrapper">
-<div class="box">
+<div class="card">
   <h2 style="text-align:center">Checkout: {{ plan.name }}</h2>
-  <div class="price">${{ plan.price }}</div>
-  <p style="text-align:center">{{ plan.duration_days }} Days Premium</p>
+  <div class="price">{{ plan.price }} {{ plan.currency }}</div>
+  <p style="text-align:center">
+    {% if plan.daily_prediction_limit is None %}Unlimited predictions/day{% else %}{{ plan.daily_prediction_limit }} predictions/day{% endif %}
+    &middot; {{ plan.duration_days }} days
+  </p>
   <hr>
   <h4>How to Pay (Rwanda)</h4>
+
   <div class="method">
     <strong>MTN MoMo</strong><br>
-    Dial: *182*1*1*078XXXXXXX*{{ plan.price }}#<br>
-    Name: LOGPHAR Ltd
+    Send <b>{{ plan.price }} {{ plan.currency }}</b> (RWF equivalent, at your provider's current rate) to:<br>
+    <strong>078XXXXXXX</strong> — Name: TOXIPHAR LTD
   </div>
+
   <div class="method">
     <strong>Airtel Money</strong><br>
-    Dial: *500*...
+    Send <b>{{ plan.price }} {{ plan.currency }}</b> (RWF equivalent) to:<br>
+    <strong>073XXXXXXX</strong> — Name: TOXIPHAR LTD
   </div>
+
   <p>After payment, send proof:</p>
-  
-  <a class="btn-pay btn-green" href="https://wa.me/2507XXXXXXX?text=I%20paid%20for%20{{ plan.name }}%20User:%20{{ request.user.username }}%20Email:%20{{ request.user.email }}" target="_blank">📱 Send proof via Whatsapp</a>
-  
-  <a class="btn-pay btn-blue" href="mailto:logphar.rw@gmail.com?subject=Payment Proof - {{ plan.name }} - {{ request.user.username }}&body=Hello LogPhar Team,%0D%0A%0D%0AI paid for {{ plan.name }} (${{ plan.price }})%0D%0AUser: {{ request.user.username }}%0D%0AEmail: {{ request.user.email }}%0D%0APhone: {{ request.user.profile.phone|default:'' }}%0D%0ATransaction ID: [paste here]%0D%0A%0D%0APlease activate my account.%0D%0AThanks.">📧 Send proof via Email</a>
+
+  <a class="btn-pay btn-green"
+     href="https://wa.me/2507XXXXXXX?text={{ whatsapp_message|urlencode }}"
+     target="_blank" rel="noopener">📱 Send proof via WhatsApp</a>
+
+  <a class="btn-pay btn-blue"
+     href="mailto:toxiphar.rw@gmail.com?subject={{ email_subject|urlencode }}&body={{ email_body|urlencode }}">
+     📧 Send proof via Email</a>
 
   <a class="btn-pay btn-gray" href="{% url 'subscription_plans' %}">← Back to plans</a>
+</div>
 </div>
 </div>
 {% endblock %}

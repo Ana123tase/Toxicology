@@ -21,6 +21,8 @@ import sys
 
 from django.shortcuts import render, redirect
 from django.urls import reverse
+from django.contrib.auth.decorators import login_required
+from subscriptions.decorators import premium_required
 
 logger = logging.getLogger(__name__)
 
@@ -108,8 +110,10 @@ def _parse_json_field(request, key, default=None):
         return default
 
 def home(request):
-    return render(request, "web/home.html")
+    return render(request, "web/landing.html")
 
+@login_required
+@premium_required
 def predict_view(request):
     if request.method == "POST":
         # From predict.html: id="smiles_final" name="smiles" -> isomeric SMILES preserving R/S, E/Z, isotopes
@@ -211,6 +215,9 @@ def predict_view(request):
     error = request.session.pop("predict_error", None)
     return render(request, "web/predict.html", {"error": error})
 
+
+@login_required
+@premium_required
 def report_view(request):
     results = request.session.pop("predict_results", None)
     result_single = request.session.pop("predict_result", None)

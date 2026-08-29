@@ -8,27 +8,61 @@
 
 <style>
   :root{
-    --ink:#10151A;
-    --panel:#171F26;
-    --panel-raised:#1D2731;
-    --line:#2A343D;
-    --paper:#E8EDEF;
-    --muted:#8DA0AA;
-    --safe:#4FD1A5;
-    --warn:#F2B84B;
-    --danger:#F2685B;
+    /* ---------- Core palette: clinical, light, calm ---------- */
+    --paper:#82d5a2;          /* page background — cool, faint mint-white */
+    --surface:#FFFFFF;        /* card / panel background */
+    --surface-alt:#EEF5F2;    /* secondary surface, e.g. hovers, raised rows */
+    --ink:#132621;            /* primary text — warm near-black, not pure black */
+    --ink-soft:#4B655D;       /* secondary / muted text */
+    --line:#DCE7E2;           /* hairline borders */
 
-    /* System font stacks — no external requests, renders instantly, native feel per OS */
-    --font-display: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --brand:#0E6B58;          /* primary teal — trust, clinical */
+    --brand-deep:#0A4F41;     /* hover / pressed states */
+    --brand-pale:#E3F3EE;     /* pale teal tint, badges/backgrounds */
+
+    --amber:#B87A1D;          /* warning — muted apothecary amber, not neon */
+    --amber-pale:#FBF0DE;
+    --brick:#B14A3D;          /* danger — muted brick red */
+    --brick-pale:#FBEAE7;
+
+    /* Legacy/back-compat aliases used by some page-level extra_css blocks */
+    --safe:var(--brand);
+    --warn:var(--amber);
+    --danger:var(--brick);
+    --panel:var(--surface);
+    --panel-raised:var(--surface-alt);
+    --muted:var(--ink-soft);
+    --green-mid:var(--brand);
+    --green-deep:var(--brand-deep);
+    --green-pale:var(--brand-pale);
+    --gold:var(--amber);
+
+    /* ---------- Type ---------- */
+    /* Serif display carries a light apothecary/pharmacopeia character; body stays a clean system sans for legibility */
+    --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
     --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     --font-mono: ui-monospace, 'SFMono-Regular', 'Menlo', 'Consolas', 'Liberation Mono', monospace;
 
-    --radius-sm:6px;
-    --radius-md:10px;
-    --gap:16px;
-    --header-h:56px;
+    --font-sm: 0.85rem;
+    --font-lg: clamp(1.05rem, 1rem + 0.3vw, 1.2rem);
+    --font-2xl: clamp(1.5rem, 1.15rem + 1.4vw, 2.1rem);
 
-    color-scheme: dark;
+    /* ---------- Spacing / sizing ---------- */
+    --radius-sm:8px;
+    --radius-md:14px;
+    --gap: clamp(14px, 3vw, 24px);
+    --header-h:64px;
+
+    --space-sm: clamp(8px, 1.5vw, 12px);
+    --space-md: var(--gap);
+    --space-lg: clamp(24px, 5vw, 48px);
+
+    --touch-min:44px;
+
+    /* Fluid content width — fills the viewport instead of sitting in a fixed box */
+    --content-max: 1280px;
+
+    color-scheme: light;
   }
 
   *,*::before,*::after{ box-sizing:border-box; }
@@ -38,11 +72,11 @@
   body{
     margin:0;
     min-height:100dvh;
-    background:var(--ink);
-    color:var(--paper);
+    background:var(--paper);
+    color:var(--ink);
     font-family:var(--font-body);
     font-size:16px;
-    line-height:1.5;
+    line-height:1.55;
     display:flex;
     flex-direction:column;
   }
@@ -53,16 +87,17 @@
     line-height:1.2;
     margin:0 0 0.5em;
     letter-spacing:-0.01em;
+    color:var(--ink);
   }
-  h1{ font-size:1.6rem; }
-  h2{ font-size:1.25rem; }
-  h3{ font-size:1.05rem; }
+  h1{ font-size:var(--font-2xl); }
+  h2{ font-size:1.4rem; }
+  h3{ font-size:1.1rem; }
 
-  p{ margin:0 0 1em; color:var(--paper); }
+  p{ margin:0 0 1em; color:var(--ink); }
   small,.muted{ color:var(--muted); }
 
-  a{ color:var(--paper); text-decoration-color:var(--muted); }
-  a:hover{ text-decoration-color:var(--paper); }
+  a{ color:var(--brand-deep); text-decoration-color:var(--brand); }
+  a:hover{ text-decoration-color:var(--brand-deep); }
 
   code, .mono, .data{
     font-family:var(--font-mono);
@@ -71,7 +106,7 @@
   }
 
   :focus-visible{
-    outline:2px solid var(--warn);
+    outline:2px solid var(--amber);
     outline-offset:2px;
   }
 
@@ -85,7 +120,7 @@
     position:sticky;
     top:0;
     z-index:50;
-    background:var(--panel);
+    background:var(--surface);
     border-bottom:1px solid var(--line);
   }
 
@@ -95,28 +130,28 @@
     align-items:center;
     justify-content:space-between;
     padding:0 var(--gap);
-    max-width:1100px;
+    width:min(var(--content-max), 100%);
     margin:0 auto;
   }
 
   .wordmark{
     font-family:var(--font-display);
     font-weight:700;
-    font-size:1.05rem;
-    color:var(--paper);
+    font-size:1.25rem;
+    color:var(--ink);
     text-decoration:none;
-    letter-spacing:-0.02em;
+    letter-spacing:-0.01em;
     display:flex;
     align-items:baseline;
     gap:2px;
   }
-  .wordmark span{ color:var(--safe); }
+  .wordmark span{ color:var(--brand); }
 
-  /* Signature: graduated risk tick-bar under the header, present on every page */
+  /* Signature: risk-spectrum tick-bar under the header — mirrors a toxicity triage scale (safe -> caution -> danger) */
   .risk-rule{
     height:3px;
     width:100%;
-    background:linear-gradient(90deg, var(--safe) 0%, var(--safe) 30%, var(--warn) 55%, var(--danger) 100%);
+    background:linear-gradient(90deg, var(--brand) 0%, var(--brand) 30%, var(--amber) 55%, var(--brick) 100%);
   }
 
   /* Mobile nav via checkbox toggle, no JS required */
@@ -134,24 +169,25 @@
   .nav-toggle-label span{
     display:block;
     height:2px;
-    background:var(--paper);
+    background:var(--ink);
     border-radius:2px;
   }
 
   .site-nav{
     display:none;
     flex-direction:column;
-    background:var(--panel);
+    background:var(--surface);
     border-bottom:1px solid var(--line);
   }
   .site-nav a{
     padding:14px var(--gap);
     border-top:1px solid var(--line);
     text-decoration:none;
-    color:var(--paper);
+    color:var(--ink);
     font-size:0.95rem;
+    font-weight:500;
   }
-  .site-nav a:hover{ background:var(--panel-raised); }
+  .site-nav a:hover{ background:var(--surface-alt); }
 
   .nav-toggle:checked ~ .site-nav{ display:flex; }
 
@@ -167,10 +203,11 @@
     padding:14px var(--gap);
     font-family:var(--font-body);
     font-size:0.95rem;
-    color:var(--paper);
+    font-weight:500;
+    color:var(--ink);
     cursor:pointer;
   }
-  .site-nav .nav-link-btn:hover{ background:var(--panel-raised); }
+  .site-nav .nav-link-btn:hover{ background:var(--surface-alt); }
 
   /* Account dropdown — <details>/<summary>, no JS required */
   .account-menu{ position:relative; }
@@ -178,7 +215,8 @@
     padding:14px var(--gap);
     border-top:1px solid var(--line);
     font-size:0.95rem;
-    color:var(--paper);
+    font-weight:500;
+    color:var(--ink);
     cursor:pointer;
     list-style:none;
   }
@@ -189,22 +227,22 @@
     color:var(--muted);
     font-size:0.75em;
   }
-  .account-menu summary:hover{ background:var(--panel-raised); }
+  .account-menu summary:hover{ background:var(--surface-alt); }
   .account-menu-list{
     display:flex;
     flex-direction:column;
-    background:var(--panel-raised);
+    background:var(--surface-alt);
   }
   .account-menu-list a,
   .account-menu-list .nav-link-btn{
     padding:12px var(--gap) 12px calc(var(--gap) * 1.5);
     border-top:1px solid var(--line);
     font-size:0.9rem;
-    color:var(--paper);
+    color:var(--ink);
     text-decoration:none;
   }
   .account-menu-list a:hover,
-  .account-menu-list .nav-link-btn:hover{ background:var(--panel); }
+  .account-menu-list .nav-link-btn:hover{ background:var(--surface); }
   .account-menu-list form.logout-form{ margin:0; }
   .account-menu-list .nav-link-btn{
     display:block;
@@ -219,8 +257,7 @@
 
   main{
     flex:1;
-    width:100%;
-    max-width:1100px;
+    width:min(var(--content-max), 100%);
     margin:0 auto;
     padding:var(--gap);
   }
@@ -229,6 +266,7 @@
     border-top:1px solid var(--line);
     padding:14px var(--gap);
     text-align:center;
+    background:var(--surface);
   }
   .site-footer p{
     margin:0;
@@ -240,7 +278,7 @@
   /* ---------- Reusable components ---------- */
 
   .card{
-    background:var(--panel);
+    background:var(--surface);
     border:1px solid var(--line);
     border-radius:var(--radius-md);
     padding:var(--gap);
@@ -253,26 +291,27 @@
     justify-content:center;
     gap:8px;
     font-family:var(--font-body);
-    font-weight:500;
+    font-weight:600;
     font-size:0.95rem;
     padding:12px 20px;
     border-radius:var(--radius-sm);
     border:1px solid var(--line);
-    background:var(--panel-raised);
-    color:var(--paper);
+    background:var(--surface-alt);
+    color:var(--ink);
     cursor:pointer;
     text-decoration:none;
-    min-height:44px; /* thumb-friendly tap target */
+    min-height:var(--touch-min); /* thumb-friendly tap target */
     width:100%;
+    transition:filter 0.15s ease, border-color 0.15s ease;
   }
-  .btn:hover{ border-color:var(--muted); }
+  .btn:hover{ border-color:var(--brand); }
   .btn-primary{
-    background:var(--safe);
-    border-color:var(--safe);
-    color:var(--ink);
+    background:var(--brand);
+    border-color:var(--brand);
+    color:#FFFFFF;
     font-weight:600;
   }
-  .btn-primary:hover{ filter:brightness(1.08); }
+  .btn-primary:hover{ background:var(--brand-deep); border-color:var(--brand-deep); }
 
   label{
     display:block;
@@ -287,18 +326,18 @@
   textarea,
   select{
     width:100%;
-    background:var(--ink);
+    background:var(--surface);
     border:1px solid var(--line);
     border-radius:var(--radius-sm);
-    color:var(--paper);
+    color:var(--ink);
     font-family:var(--font-mono);
     font-size:1rem;
     padding:12px;
     margin-bottom:var(--gap);
-    min-height:44px;
+    min-height:var(--touch-min);
   }
   input:focus, textarea:focus, select:focus{
-    border-color:var(--warn);
+    border-color:var(--amber);
   }
 
   .field-group{ margin-bottom:var(--gap); }
@@ -310,13 +349,14 @@
     gap:6px;
     font-family:var(--font-mono);
     font-size:0.8rem;
+    font-weight:600;
     padding:4px 10px;
     border-radius:999px;
-    border:1px solid var(--line);
+    border:1px solid transparent;
   }
-  .badge-safe{ color:var(--safe); border-color:var(--safe); }
-  .badge-warn{ color:var(--warn); border-color:var(--warn); }
-  .badge-danger{ color:var(--danger); border-color:var(--danger); }
+  .badge-safe{ color:var(--brand-deep); background:var(--brand-pale); border-color:var(--brand); }
+  .badge-warn{ color:#7A5313; background:var(--amber-pale); border-color:var(--amber); }
+  .badge-danger{ color:#7C2E24; background:var(--brick-pale); border-color:var(--brick); }
 
   /* Django messages framework */
   .messages{ list-style:none; margin:0 0 var(--gap); padding:0; }
@@ -324,12 +364,13 @@
     padding:12px var(--gap);
     border-radius:var(--radius-sm);
     border:1px solid var(--line);
+    background:var(--surface);
     margin-bottom:8px;
     font-size:0.9rem;
   }
-  .messages .success{ border-color:var(--safe); }
-  .messages .error{ border-color:var(--danger); }
-  .messages .warning{ border-color:var(--warn); }
+  .messages .success{ border-color:var(--brand); background:var(--brand-pale); }
+  .messages .error{ border-color:var(--brick); background:var(--brick-pale); }
+  .messages .warning{ border-color:var(--amber); background:var(--amber-pale); }
 
   table{
     width:100%;
@@ -342,6 +383,7 @@
     border-bottom:1px solid var(--line);
     white-space:nowrap;
   }
+  th{ color:var(--muted); font-weight:600; }
   .table-scroll{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
 
   /* ---------- Responsive breakpoints (mobile-first) ---------- */
@@ -378,7 +420,7 @@
       min-width:180px;
       border:1px solid var(--line);
       border-radius:var(--radius-sm);
-      box-shadow:0 8px 24px rgba(0,0,0,0.3);
+      box-shadow:0 8px 24px rgba(19,38,33,0.12);
       z-index:60;
       margin-top:6px;
     }
@@ -393,15 +435,19 @@
       border-bottom:none;
     }
     .btn{ width:auto; }
-    main{ padding:24px var(--gap); }
-    h1{ font-size:2rem; }
+    main{ padding:32px var(--gap); }
   }
 
   @media (min-width: 1024px){
-    main{ padding:32px 0; }
+    main{ padding:40px var(--gap); }
   }
-</style>
+
+  @media (min-width: 1440px){
+    :root{ --content-max: 1440px; }
+  }
+
 {% block extra_css %}{% endblock %}
+</style>
 </head>
 <body>
 
