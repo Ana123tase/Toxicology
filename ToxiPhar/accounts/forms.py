@@ -4,6 +4,14 @@ from django.contrib.auth.models import User
 from .models import PharmacistProfile
 import re
 
+import logging
+from datetime import timedelta
+from django.utils import timezone
+
+from subscriptions.models import SubscriptionPlan, Subscription
+
+logger = logging.getLogger(__name__)
+
 
 class RegisterForm(UserCreationForm):
     first_name = forms.CharField(max_length=30, required=True)
@@ -25,8 +33,9 @@ class RegisterForm(UserCreationForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['username'].required = False
-        self.fields['username'].widget = forms.HiddenInput()
+        # Username is now a normal, required field the user fills in
+        # themselves — no auto-generation, no hiding.
+        self.fields['username'].required = True
 
     def clean_email(self):
         email = self.cleaned_data['email']
@@ -36,27 +45,13 @@ class RegisterForm(UserCreationForm):
             )
         return email
 
-    def clean(self):
-        cleaned_data = super().clean()
-        institution = cleaned_data.get('institution')
-        if institution:
-            clean_username = re.sub(r'[^a-zA-Z0-9]+', '_', institution).strip('_').lower()
-
-            if not clean_username:
-                self.add_error(
-                    'institution',
-                    "Pharmacy name must contain at least one letter or number."
-                )
-            elif User.objects.filter(username=clean_username).exists():
-                self.add_error(
-                    'institution',
-                    "This pharmacy name would create a username that's already "
-                    "taken. Please choose a different name."
-                )
-            else:
-                cleaned_data['username'] = clean_username
-                self.cleaned_data['username'] = clean_username
-        return cleaned_data
+    def clean_username(self):
+        username = self.cleaned_data['username']
+        if User.objects.filter(username__iexact=username).exists():
+            raise forms.ValidationError(
+                "This username is already taken. Please choose another."
+            )
+        return username
 
     def save(self, commit=True):
         user = super().save(commit=False)
@@ -67,7 +62,7 @@ class RegisterForm(UserCreationForm):
 
         if commit:
             user.save()
-            PharmacistProfile.objects.create(
+            profile = PharmacistProfile.objects.create(
                 user=user,
                 institution=self.cleaned_data['institution'],
                 phone_number=self.cleaned_data['phone_number'],
@@ -75,8 +70,26 @@ class RegisterForm(UserCreationForm):
                 district=self.cleaned_data['district'],
                 sector=self.cleaned_data['sector'],
             )
-        return user
 
+            free_plan = SubscriptionPlan.objects.filter(
+                tier=SubscriptionPlan.Tier.FREE,
+                billing_cycle=SubscriptionPlan.BillingCycle.FREE,
+                is_active=True,
+            ).first()
+
+            if free_plan:
+                Subscription.objects.create(
+                    researcher=profile,
+                    plan=free_plan,
+                    is_active=True,
+                    expires_at=timezone.now() + timedelta(days=free_plan.duration_days),
+                )
+            else:
+                logger.error(
+                    "No active Free SubscriptionPlan found — user %s was "
+                    "created without a subscription.", user.username
+                )
+        return user
 
 class EditProfileForm(forms.ModelForm):
     first_name = forms.CharField(max_length=30, required=True)

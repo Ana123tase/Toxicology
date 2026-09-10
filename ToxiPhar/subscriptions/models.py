@@ -87,6 +87,19 @@ class Subscription(models.Model):
     def is_expired(self):
         return self.expires_at < timezone.now() if self.expires_at else True
 
+    # subscriptions/models.py, inside class Subscription
+
+    @property
+    def is_pro(self):
+        """True only for an active, non-expired, paid-tier subscription.
+        Free-tier subscriptions are 'active' by design but are never Pro."""
+        if self.is_expired:
+            return False
+        if not self.is_active:
+            return False
+        return self.plan.tier != SubscriptionPlan.Tier.FREE
+
+
     @property
     def days_remaining(self):
         if self.is_expired:

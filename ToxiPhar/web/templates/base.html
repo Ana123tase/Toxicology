@@ -320,11 +320,17 @@
     margin-bottom:6px;
   }
 
-  input[type="text"],
-  input[type="email"],
-  input[type="password"],
-  textarea,
-  select{
+  /* Wrapped in :where() so this block's specificity is zeroed out (0,0,0) —
+     visual defaults are unchanged, but any child page's extra_css can now
+     override these with a plain tag/class selector instead of having to
+     fight the attribute-selector specificity of input[type="..."]. */
+  :where(
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    textarea,
+    select
+  ){
     width:100%;
     background:var(--surface);
     border:1px solid var(--line);
@@ -449,7 +455,7 @@
 {% block extra_css %}{% endblock %}
 </style>
 </head>
-<body>
+<body{% block body_attrs %}{% endblock %}>
 
   <header class="site-header">
     <div class="header-bar">
@@ -466,7 +472,7 @@
       <a href="{% url 'web:prediction_history' %}">History</a>
       <a href="{% url 'web:predict' %}">New Prediction</a>
       {% if user.is_authenticated %}
-        {% if user.profile.subscription.is_active and not user.profile.subscription.is_expired %}
+        {% if user.profile.subscription.is_pro %}
           <span class="nav-link-btn" style="cursor:default;">Pro User</span>
         {% else %}
           <a href="{% url 'subscription_plans' %}">Subscribe</a>
