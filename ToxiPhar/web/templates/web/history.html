@@ -30,17 +30,14 @@
   .ph-reset-link{ font-size:0.85rem; color:var(--muted); text-decoration:underline; }
 
   table.ph-table{ table-layout:auto; width:100%; }
-  table.ph-table td.smiles{
-    font-family:var(--font-mono);
-    font-size:0.78rem;
-    color:var(--ink-soft);
+  table.ph-table td.chem-name{
     white-space:normal;
     word-break:break-all;
     min-width:220px;
     max-width:340px;
   }
   table.ph-table td, table.ph-table th{ white-space:nowrap; }
-  table.ph-table td.smiles{ white-space:normal; }
+  table.ph-table td.chem-name{ white-space:normal; }
 
   /* Row separation */
   table.ph-table{ border-collapse:collapse; }
@@ -121,7 +118,6 @@
                     <th>Brand Name</th>
                     <th>Generic Name</th>
                     <th>Chemical Name</th>
-                    <th>SMILES</th>
                     <th>DILI</th>
                     <th>Ames</th>
                     <th>Teratogenicity</th>
@@ -135,8 +131,7 @@
                     <td>{{ report.created_at|date:"Y-m-d H:i" }}</td>
                     <td>{{ report.brand_name }}</td>
                     <td>{{ report.generic_name|default:"—" }}</td>
-                    <td>{{ report.chemical_name|default:"—" }}</td>
-                    <td class="smiles">{{ report.smiles }}</td>
+                    <td class="chem-name">{{ report.chemical_name|default:"—" }}</td>
 
                     {% with v=report.display_predictions.DILI %}
                     <td class="{% if v is None or v == '' %}prob-none{% elif v >= 50 %}prob-high{% elif v >= 20 %}prob-moderate{% else %}prob-low{% endif %}">{% if v is None or v == '' %}—{% else %}{{ v|floatformat:1 }}%{% endif %}</td>

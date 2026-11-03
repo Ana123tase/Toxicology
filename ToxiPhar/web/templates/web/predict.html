@@ -155,44 +155,33 @@
     gap:4px 16px;
   }
 
-  /* Stereo view (preview only; never changes what is submitted) */
-  .stereo-panel{
+  /* Stereo strip: one compact bar, shown ONLY when stereo/E-Z features exist.
+     The highlighting itself is drawn inside the editor; nothing here takes
+     space unless it is needed. */
+  .stereo-strip{
     margin:0 12px 8px;
-    padding:8px 10px;
+    padding:6px 10px;
     border:1px solid var(--line);
     background:#fff;
     border-radius:4px;
     font-size:0.82rem;
     color:#222;
   }
-  .stereo-panel summary{
-    cursor:pointer;
-    font-weight:600;
-    font-size:0.85rem;
-  }
-  .stereo-body{
+  .stereo-head{
     display:flex;
-    gap:14px;
     flex-wrap:wrap;
-    margin-top:8px;
+    align-items:center;
+    justify-content:space-between;
+    gap:4px 14px;
   }
-  .stereo-svg-wrap{
-    flex:1 1 280px;
-    height:260px;
-    border:1px solid #e5e7eb;
-    border-radius:4px;
-    background:#fff;
-  }
-  #draw-box.is-fullscreen .stereo-svg-wrap{ height:200px; }
-  .stereo-side{
-    flex:1 1 260px;
-    min-width:0;
-  }
-  .stereo-side p{ margin:0 0 6px 0; }
-  .stereo-side ol{ margin:0 0 8px 18px; padding:0; }
-  .stereo-side li{ margin-bottom:4px; }
+  .stereo-summary{ margin:0; }
   .stereo-summary.warn{ color:#9a4a00; font-weight:600; }
-  .stereo-key{ display:flex; gap:14px; flex-wrap:wrap; margin:0 0 6px 0; }
+  .stereo-key{
+    display:inline-flex;
+    gap:12px;
+    flex-wrap:wrap;
+    font-size:0.78rem;
+  }
   .stereo-key span{ display:inline-flex; align-items:center; gap:5px; }
   .stereo-dot{
     display:inline-block;
@@ -203,7 +192,24 @@
   }
   .stereo-dot.def{ border:2px solid #1a4d8e; background:rgba(26,77,142,0.18); }
   .stereo-dot.und{ border:2px dashed #d35400; background:rgba(211,84,0,0.12); }
-  .stereo-note{ color:var(--muted, #777); font-size:0.74rem; }
+  .stereo-where{ margin:4px 0 0 0; font-size:0.78rem; color:#555; }
+  .stereo-details > summary{
+    cursor:pointer;
+    font-size:0.78rem;
+    margin-top:4px;
+    color:#444;
+  }
+  .stereo-details ol{ margin:6px 0 4px 18px; padding:0; }
+  .stereo-details li{ margin-bottom:3px; }
+  .stereo-svg-wrap{
+    height:220px;
+    margin-top:6px;
+    border:1px solid #e5e7eb;
+    border-radius:4px;
+    background:#fff;
+  }
+  #draw-box.is-fullscreen .stereo-svg-wrap{ height:160px; }
+  .stereo-note{ color:var(--muted, #777); font-size:0.72rem; margin:4px 0 0 0; }
 
   /* Footer: always visible (sticky) so Predict can never be lost */
   .draw-box-footer{
@@ -254,9 +260,9 @@
 {% block content %}
 {% load static %}
 
-  <h1>Toxicity screen</h1>
+  <h1>Drug design screen</h1>
   <p class="muted">
-    Draw the molecule's structure for the most reliable prediction. The editor below supports
+    Draw the molecule's structure for the most reliable drug toxicity prediction. <strong>This is a drug design tool</strong>, the editor below supports
     every standard drug-design tool.
   </p>
 
@@ -330,25 +336,26 @@
         <div id="fragment-warning" class="notice-box" style="display:none;"></div>
         <div id="chem-audit-box" class="chem-audit-box" style="display:none;"></div>
 
-        <details id="stereo-panel" class="stereo-panel" style="display:none;" open>
-          <summary>Stereo view — stereocenters and E/Z bonds highlighted</summary>
-          <div class="stereo-body">
-            <div id="stereo-svg" class="stereo-svg-wrap"></div>
-            <div class="stereo-side">
-              <p id="stereo-summary" class="stereo-summary"></p>
-              <p class="stereo-key">
-                <span><i class="stereo-dot def"></i> defined in the drawing</span>
-                <span><i class="stereo-dot und"></i> not specified</span>
-              </p>
-              <ol id="stereo-list"></ol>
-              <p class="stereo-note">
-                Preview only, worked out in your browser from the drawing. It does not change what is
-                submitted; the server's own analysis remains the reference. Not covered: ring cis/trans,
-                atropisomers, and S or P centers unless a wedge/hash is drawn on them.
-              </p>
-            </div>
+        <div id="stereo-panel" class="stereo-strip" style="display:none;">
+          <div class="stereo-head">
+            <p id="stereo-summary" class="stereo-summary"></p>
+            <span class="stereo-key">
+              <span><i class="stereo-dot def"></i> defined</span>
+              <span><i class="stereo-dot und"></i> not specified</span>
+            </span>
           </div>
-        </details>
+          <p id="stereo-where" class="stereo-where" style="display:none;"></p>
+          <details id="stereo-details" class="stereo-details">
+            <summary>Details</summary>
+            <ol id="stereo-list"></ol>
+            <div id="stereo-svg" class="stereo-svg-wrap" style="display:none;"></div>
+            <p class="stereo-note">
+              Preview only, worked out in your browser from the drawing. It does not change what is
+              submitted; the server's own analysis remains the reference. Not covered: ring cis/trans,
+              atropisomers, and S or P centers unless a wedge/hash is drawn on them.
+            </p>
+          </details>
+        </div>
       </div>
 
       <div class="draw-box-footer">
@@ -919,9 +926,10 @@
   // ========================================================================
   // Stereo view
   //
-  // PREVIEW ONLY. Reads the molfile from the editor, finds stereocenters and
-  // stereogenic double bonds, and redraws the structure with highlights in a
-  // separate panel. It never touches the editor and never changes the hidden
+  // PREVIEW ONLY. Reads the molfile from the editor and finds stereocenters and
+  // stereogenic double bonds. Where present they are highlighted directly in the
+  // editor (display-only), with a one-line summary under it. When there are none,
+  // nothing is shown at all. It never changes the structure or the hidden
   // fields, so a failure here cannot affect prediction (everything is wrapped
   // in try/catch).
   //
@@ -1221,20 +1229,137 @@
       'style="width:100%;height:100%;display:block">' + under + bondsSvg + labels + badges + '</svg>';
   }
 
-  function renderStereoPanel(mol, res) {
+  // ---- In-editor highlighting (Ketcher highlights API, when this build has it) ----
+  // Highlights are display-only: they are not part of the molfile or SMILES, so
+  // they can never change what is submitted. Everything is verified before use;
+  // if anything does not line up, nothing is highlighted in the editor and the
+  // small fallback map is shown instead.
+  let lastHighlightKey = '';
+  let lastHighlightOk = false;
+
+  function editorHighlightApi(k) {
+    try {
+      const h = k.editor && k.editor.highlights;
+      if (h && typeof h.create === 'function' && typeof h.clear === 'function') return h;
+    } catch (e) {}
+    return null;
+  }
+
+  function clearEditorHighlights(k) {
+    try {
+      if (lastHighlightOk) {
+        const api = editorHighlightApi(k);
+        if (api) api.clear();
+      }
+    } catch (e) {}
+    lastHighlightKey = '';
+    lastHighlightOk = false;
+  }
+
+  // Map each molfile atom to the editor's own atom id by matching element AND
+  // position (normalised), so the result never depends on id ordering.
+  // Returns null unless every atom matches uniquely.
+  function mapMolfileToEditor(k, mol) {
+    const struct = k.editor.struct();
+    if (!struct || !struct.atoms) return null;
+    const ed = [];
+    struct.atoms.forEach(function (atom, id) {
+      if (atom && atom.pp) ed.push({ id: id, label: atom.label, x: atom.pp.x, y: atom.pp.y });
+    });
+    const mf = mol.atoms;
+    if (ed.length !== mf.length || ed.length === 0) return null;
+
+    function norm(pts) {
+      let cx = 0, cy = 0;
+      pts.forEach(function (p) { cx += p.x; cy += p.y; });
+      cx /= pts.length; cy /= pts.length;
+      let span = 1e-9;
+      pts.forEach(function (p) { span = Math.max(span, Math.abs(p.x - cx), Math.abs(p.y - cy)); });
+      return pts.map(function (p) { return { x: (p.x - cx) / span, y: (p.y - cy) / span }; });
+    }
+    const en = norm(ed);
+    const TOL = 0.02;
+
+    const signs = [1, -1];
+    for (let si = 0; si < signs.length; si++) {
+      const sgn = signs[si];
+      const mn = norm(mf.map(function (a) { return { x: a.x, y: sgn * a.y }; }));
+      const used = new Set();
+      const map = [];
+      let good = true;
+      for (let i = 0; i < mf.length && good; i++) {
+        let found = -1;
+        for (let j = 0; j < ed.length; j++) {
+          if (used.has(j) || ed[j].label !== mf[i].sym) continue;
+          if (Math.hypot(en[j].x - mn[i].x, en[j].y - mn[i].y) < TOL) { found = j; break; }
+        }
+        if (found < 0) { good = false; break; }
+        used.add(found);
+        map.push(ed[found].id);
+      }
+      if (good && map.length === mf.length) return map;
+    }
+    return null;
+  }
+
+  function applyEditorHighlights(k, mol, res, key) {
+    const api = editorHighlightApi(k);
+    if (!api) return false;
+    if (key === lastHighlightKey) return lastHighlightOk;   // nothing changed; avoids change-event loops
+
+    clearEditorHighlights(k);
+    lastHighlightKey = key;
+    lastHighlightOk = false;
+
+    const map = mapMolfileToEditor(k, mol);
+    if (!map) return false;
+    const struct = k.editor.struct();
+
+    const groups = {
+      def: { atoms: [], bonds: [], color: '#1a4d8e' },
+      und: { atoms: [], bonds: [], color: '#d35400' }
+    };
+    res.centers.forEach(function (c) {
+      groups[c.state === 'defined' ? 'def' : 'und'].atoms.push(map[c.atom]);
+    });
+    for (let q = 0; q < res.ez.length; q++) {
+      const z = res.ez[q], b = mol.bonds[z.bond];
+      const ia = map[b.a], ib = map[b.b];
+      let bid = null;
+      struct.bonds.forEach(function (bond, id) {
+        if ((bond.begin === ia && bond.end === ib) || (bond.begin === ib && bond.end === ia)) bid = id;
+      });
+      if (bid === null) return false;
+      const g = groups[z.state === 'defined' ? 'def' : 'und'];
+      g.bonds.push(bid);
+      g.atoms.push(ia, ib);
+    }
+
+    const list = [];
+    ['def', 'und'].forEach(function (name) {
+      const g = groups[name];
+      if (g.atoms.length || g.bonds.length) {
+        list.push({ atoms: Array.from(new Set(g.atoms)), bonds: g.bonds, color: g.color });
+      }
+    });
+    if (!list.length) return false;
+
+    try {
+      api.create.apply(api, list);
+    } catch (e1) {
+      try { api.create(list); } catch (e2) { return false; }
+    }
+    lastHighlightOk = true;
+    return true;
+  }
+
+  function renderStereoPanel(mol, res, highlighted) {
     const svgBox = document.getElementById('stereo-svg');
     const summary = document.getElementById('stereo-summary');
     const list = document.getElementById('stereo-list');
+    const where = document.getElementById('stereo-where');
+    const details = document.getElementById('stereo-details');
     list.textContent = '';
-
-    if (!res.centers.length && !res.ez.length) {
-      svgBox.innerHTML = renderStereoSvg(mol, res);
-      summary.className = 'stereo-summary';
-      summary.textContent = 'No stereocenters or stereogenic double bonds detected in this drawing.';
-      return;
-    }
-
-    svgBox.innerHTML = renderStereoSvg(mol, res);
 
     const def = res.centers.filter(function (c) { return c.state === 'defined'; }).length;
     const und = res.centers.filter(function (c) { return c.state === 'undefined'; }).length;
@@ -1254,8 +1379,7 @@
     let text = parts.join('; ') + '.';
     const needsCare = und > 0 || unk > 0 || ezUnk > 0;
     if (needsCare) {
-      text += ' Where the configuration is not specified, the exact isomer is not identified. ' +
-              'If you know it, draw wedge/hash bonds (or set the double-bond geometry).';
+      text += ' Not specified = exact isomer not identified; draw wedge/hash bonds if known.';
     }
     summary.className = 'stereo-summary' + (needsCare ? ' warn' : '');
     summary.textContent = text;
@@ -1266,36 +1390,61 @@
       const what = c.state === 'defined' ? 'defined (wedge/hash drawn)'
         : c.state === 'unknown' ? 'marked unknown (wavy bond)'
         : 'NOT specified (no wedge/hash drawn)';
-      li.textContent = c.num + '. ' + A[c.atom].sym + ' stereocenter, ' + what + '. Attached: ' + c.nbrs + '.';
+      li.textContent = A[c.atom].sym + ' stereocenter, ' + what + '. Attached: ' + c.nbrs + '.';
       list.appendChild(li);
     });
     res.ez.forEach(function (z) {
       const b = B[z.bond];
       const li = document.createElement('li');
       const what = z.state === 'defined' ? 'geometry set by the drawing' : 'geometry unspecified (crossed bond)';
-      li.textContent = z.num + '. Double bond ' + A[b.a].sym + '=' + A[b.b].sym + ', ' + what + '.';
+      li.textContent = 'Double bond ' + A[b.a].sym + '=' + A[b.b].sym + ', ' + what + '.';
       list.appendChild(li);
     });
+
+    if (highlighted) {
+      // shown directly on the drawing in the editor; no extra picture needed
+      svgBox.style.display = 'none';
+      svgBox.innerHTML = '';
+      where.style.display = 'none';
+      where.textContent = '';
+    } else {
+      // fallback: this editor build cannot highlight in place, so show a small map
+      svgBox.innerHTML = renderStereoSvg(mol, res);
+      svgBox.style.display = 'block';
+      where.textContent = 'This editor build cannot highlight inside the drawing, so a small map is shown below.';
+      where.style.display = 'block';
+      details.open = true;
+    }
   }
 
   async function updateStereoView(k, smiles) {
     const panel = document.getElementById('stereo-panel');
     const myToken = ++stereoToken;
     try {
-      if (!smiles) { panel.style.display = 'none'; return; }
+      if (!smiles) {
+        panel.style.display = 'none';
+        clearEditorHighlights(k);
+        return;
+      }
       const molfile = await k.getMolfile();
       if (myToken !== stereoToken) return; // a newer drawing replaced this one
       const mol = parseMolfile(molfile);
-      panel.style.display = 'block';
       if (!mol) {
-        document.getElementById('stereo-svg').textContent = '';
-        document.getElementById('stereo-list').textContent = '';
-        const s = document.getElementById('stereo-summary');
-        s.className = 'stereo-summary';
-        s.textContent = 'Stereo view is not available for this structure format. This does not affect the prediction.';
+        panel.style.display = 'none';
+        clearEditorHighlights(k);
         return;
       }
-      renderStereoPanel(mol, analyzeStereoGeometry(mol));
+      const res = analyzeStereoGeometry(mol);
+      if (!res.centers.length && !res.ez.length) {
+        // nothing to show: no panel, no highlights
+        panel.style.display = 'none';
+        clearEditorHighlights(k);
+        return;
+      }
+      let highlighted = false;
+      try { highlighted = applyEditorHighlights(k, mol, res, molfile); } catch (e) { highlighted = false; }
+      renderStereoPanel(mol, res, highlighted);
+      panel.style.display = 'block';
     } catch (e) {
       // never let the preview interfere with the rest of the page
       if (myToken === stereoToken) panel.style.display = 'none';
