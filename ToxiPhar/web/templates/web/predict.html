@@ -3,6 +3,7 @@
 {% block title %}ToxiPhar — Predict{% endblock %}
 
 {% block extra_css %}
+{% verbatim %}
 <style>
   .input-mode-toggle{
     display:flex;
@@ -154,6 +155,56 @@
     gap:4px 16px;
   }
 
+  /* Stereo view (preview only; never changes what is submitted) */
+  .stereo-panel{
+    margin:0 12px 8px;
+    padding:8px 10px;
+    border:1px solid var(--line);
+    background:#fff;
+    border-radius:4px;
+    font-size:0.82rem;
+    color:#222;
+  }
+  .stereo-panel summary{
+    cursor:pointer;
+    font-weight:600;
+    font-size:0.85rem;
+  }
+  .stereo-body{
+    display:flex;
+    gap:14px;
+    flex-wrap:wrap;
+    margin-top:8px;
+  }
+  .stereo-svg-wrap{
+    flex:1 1 280px;
+    height:260px;
+    border:1px solid #e5e7eb;
+    border-radius:4px;
+    background:#fff;
+  }
+  #draw-box.is-fullscreen .stereo-svg-wrap{ height:200px; }
+  .stereo-side{
+    flex:1 1 260px;
+    min-width:0;
+  }
+  .stereo-side p{ margin:0 0 6px 0; }
+  .stereo-side ol{ margin:0 0 8px 18px; padding:0; }
+  .stereo-side li{ margin-bottom:4px; }
+  .stereo-summary.warn{ color:#9a4a00; font-weight:600; }
+  .stereo-key{ display:flex; gap:14px; flex-wrap:wrap; margin:0 0 6px 0; }
+  .stereo-key span{ display:inline-flex; align-items:center; gap:5px; }
+  .stereo-dot{
+    display:inline-block;
+    width:12px;
+    height:12px;
+    border-radius:50%;
+    box-sizing:border-box;
+  }
+  .stereo-dot.def{ border:2px solid #1a4d8e; background:rgba(26,77,142,0.18); }
+  .stereo-dot.und{ border:2px dashed #d35400; background:rgba(211,84,0,0.12); }
+  .stereo-note{ color:var(--muted, #777); font-size:0.74rem; }
+
   /* Footer: always visible (sticky) so Predict can never be lost */
   .draw-box-footer{
     position:sticky;
@@ -197,6 +248,7 @@
     .draw-box-footer .btn{ width:100%; }
   }
 </style>
+{% endverbatim %}
 {% endblock %}
 
 {% block content %}
@@ -205,20 +257,7 @@
   <h1>Toxicity screen</h1>
   <p class="muted">
     Draw the molecule's structure for the most reliable prediction. The editor below supports
-    every standard drug-design tool: single/double/triple/aromatic bonds, any atom or element,
-    charges, R/S wedge/dash stereochemistry, E/Z double bonds, R-groups, S-groups, and more.
-    If you don't have a drawing, you can paste a SMILES string instead, or enter a chemical
-    formula (e.g. <code>C9H8O4</code>) — either will load into the same editor so you can check
-    the structure before predicting. Isomers (different R/S or E/Z forms), isotopes, and
-    multi-component structures (salts or mixtures) are all fully supported. Note that a formula
-    describes composition only, not connectivity, so the editor makes a best-effort structure
-    guess from it — for an exact isomer, draw the structure or paste a SMILES string instead.
-  </p>
-  <p class="muted">
-    The generic and chemical names are optional. If you leave them empty, we try to suggest them
-    from PubChem (and, for the chemical name only, NCI CIR) — but only when the database record
-    matches exactly the structure you drew. If nothing matches, or a service can't be reached,
-    the fields are simply left blank.
+    every standard drug-design tool.
   </p>
 
   <form method="post" action="{% url 'web:predict' %}" id="predict-form" class="card">
@@ -290,6 +329,26 @@
       <div class="draw-panels">
         <div id="fragment-warning" class="notice-box" style="display:none;"></div>
         <div id="chem-audit-box" class="chem-audit-box" style="display:none;"></div>
+
+        <details id="stereo-panel" class="stereo-panel" style="display:none;" open>
+          <summary>Stereo view — stereocenters and E/Z bonds highlighted</summary>
+          <div class="stereo-body">
+            <div id="stereo-svg" class="stereo-svg-wrap"></div>
+            <div class="stereo-side">
+              <p id="stereo-summary" class="stereo-summary"></p>
+              <p class="stereo-key">
+                <span><i class="stereo-dot def"></i> defined in the drawing</span>
+                <span><i class="stereo-dot und"></i> not specified</span>
+              </p>
+              <ol id="stereo-list"></ol>
+              <p class="stereo-note">
+                Preview only, worked out in your browser from the drawing. It does not change what is
+                submitted; the server's own analysis remains the reference. Not covered: ring cis/trans,
+                atropisomers, and S or P centers unless a wedge/hash is drawn on them.
+              </p>
+            </div>
+          </div>
+        </details>
       </div>
 
       <div class="draw-box-footer">
@@ -327,6 +386,7 @@
 {% endblock %}
 
 {% block extra_js %}
+{% verbatim %}
 <script>
   // ========================================================================
   // Ketcher loader
@@ -376,6 +436,13 @@
     document.getElementById('smiles-box').classList.toggle('active', mode === 'smiles');
     document.getElementById('formula-box').classList.toggle('active', mode === 'formula');
   }
+
+  // Sync the panels with whichever radio is actually selected (the browser may
+  // restore a different selection after a refresh or back navigation).
+  (function syncModeOnLoad() {
+    const checked = document.querySelector('input[name="input_mode"]:checked');
+    setMode(checked ? checked.value : 'draw');
+  })();
 
   // ========================================================================
   // Optional name suggestion
@@ -850,6 +917,392 @@
   }
 
   // ========================================================================
+  // Stereo view
+  //
+  // PREVIEW ONLY. Reads the molfile from the editor, finds stereocenters and
+  // stereogenic double bonds, and redraws the structure with highlights in a
+  // separate panel. It never touches the editor and never changes the hidden
+  // fields, so a failure here cannot affect prediction (everything is wrapped
+  // in try/catch).
+  //
+  // Detection (all in the browser, V2000 molfiles):
+  //   - Defined center: atom at the narrow end of a wedge/hash bond.
+  //   - Not-specified center: sp3 C (or quaternary N+/P+) whose four
+  //     substituents (H counted) are all constitutionally different, but with
+  //     no wedge/hash. "Different" = different after iterated neighbour
+  //     refinement (Morgan-style), so symmetric branches are not flagged.
+  //   - Double bonds: C=C / C=N / N=N style bonds where each end has a
+  //     substituent, the two substituents on an end differ, and the bond is
+  //     not in a ring smaller than 8. Geometry is taken from the drawing;
+  //     a crossed bond is reported as unspecified.
+  // ========================================================================
+  const VALENCE = { C: 4, N: 3, O: 2, S: 2, P: 3, B: 3, F: 1, Cl: 1, Br: 1, I: 1 };
+  let stereoToken = 0;
+
+  function parseMolfile(text) {
+    if (!text || /V3000/.test(text)) return null;
+    const lines = text.split(/\r?\n/);
+    if (lines.length < 4) return null;
+    const nA = parseInt(lines[3].substr(0, 3), 10);
+    const nB = parseInt(lines[3].substr(3, 3), 10);
+    if (!(nA > 0) || isNaN(nB) || lines.length < 4 + nA + nB) return null;
+
+    const chargeCode = { 0: 0, 1: 3, 2: 2, 3: 1, 5: -1, 6: -2, 7: -3 };
+    const atoms = [];
+    const bonds = [];
+    for (let i = 0; i < nA; i++) {
+      const l = lines[4 + i];
+      const x = parseFloat(l.substr(0, 10));
+      const y = parseFloat(l.substr(10, 10));
+      const sym = l.substr(31, 3).trim();
+      const cc = parseInt(l.substr(36, 3), 10) || 0;
+      if (isNaN(x) || isNaN(y) || !sym) return null;
+      atoms.push({ x: x, y: y, sym: sym, charge: chargeCode[cc] || 0, iso: 0 });
+    }
+    for (let j = 0; j < nB; j++) {
+      const l = lines[4 + nA + j];
+      const a = parseInt(l.substr(0, 3), 10) - 1;
+      const b = parseInt(l.substr(3, 3), 10) - 1;
+      const type = parseInt(l.substr(6, 3), 10);
+      const st = parseInt(l.substr(9, 3), 10) || 0;
+      if (!(a >= 0 && a < nA && b >= 0 && b < nA) || isNaN(type)) return null;
+      bonds.push({ a: a, b: b, type: type, st: st });
+    }
+    // property lines: charges and isotopes
+    for (let m = 4 + nA + nB; m < lines.length; m++) {
+      const l = lines[m];
+      if (l.indexOf('M  CHG') === 0 || l.indexOf('M  ISO') === 0) {
+        const t = l.trim().split(/\s+/);
+        const cnt = parseInt(t[2], 10) || 0;
+        for (let q = 0; q < cnt; q++) {
+          const idx = parseInt(t[3 + q * 2], 10) - 1;
+          const val = parseInt(t[4 + q * 2], 10);
+          if (idx >= 0 && idx < nA && !isNaN(val)) {
+            if (t[1] === 'CHG') atoms[idx].charge = val; else atoms[idx].iso = val;
+          }
+        }
+      }
+    }
+    return { atoms: atoms, bonds: bonds };
+  }
+
+  function analyzeStereoGeometry(mol) {
+    const A = mol.atoms, B = mol.bonds, n = A.length;
+    const adj = A.map(function () { return []; });
+    B.forEach(function (b, idx) {
+      adj[b.a].push({ j: b.b, b: idx });
+      adj[b.b].push({ j: b.a, b: idx });
+    });
+    const isH = function (i) { return A[i].sym === 'H' && !A[i].iso; };
+    const ordOf = function (idx) { return B[idx].type === 4 ? 1.5 : B[idx].type; };
+
+    function hydrogens(i) {
+      let sum = 0, exp = 0;
+      adj[i].forEach(function (e) { sum += ordOf(e.b); if (isH(e.j)) exp++; });
+      const v = VALENCE[A[i].sym];
+      let implicit = 0;
+      if (v !== undefined) {
+        let val = v;
+        if (A[i].sym === 'C') val -= Math.abs(A[i].charge);
+        else if (A[i].sym === 'B') val -= A[i].charge;
+        else val += A[i].charge;
+        implicit = Math.max(0, Math.round(val - sum));
+      }
+      return { exp: exp, total: exp + implicit };
+    }
+
+    // Morgan-style classes: atoms with the same class are constitutionally equivalent
+    function rank(arr) {
+      const u = Array.from(new Set(arr)).sort();
+      const m = new Map(u.map(function (s, i) { return [s, i]; }));
+      return arr.map(function (s) { return m.get(s); });
+    }
+    const hInfo = A.map(function (_, i) { return hydrogens(i); });
+    let cls = rank(A.map(function (a, i) {
+      return a.sym + '|' + a.charge + '|' + a.iso + '|' + hInfo[i].total;
+    }));
+    for (let it = 0; it < 30; it++) {
+      const next = cls.map(function (c, i) {
+        return c + '|' + adj[i].filter(function (e) { return !isH(e.j); })
+          .map(function (e) { return B[e.b].type + ':' + cls[e.j]; }).sort().join(',');
+      });
+      const r = rank(next);
+      const same = new Set(r).size === new Set(cls).size;
+      cls = r;
+      if (same) break;
+    }
+
+    // wedge / hash / either at the narrow (first) end of single bonds
+    const marks = new Map();
+    B.forEach(function (b) {
+      if (b.type === 1 && (b.st === 1 || b.st === 6 || b.st === 4)) {
+        const m = marks.get(b.a) || {};
+        if (b.st === 1) m.wedge = true;
+        if (b.st === 6) m.hash = true;
+        if (b.st === 4) m.either = true;
+        marks.set(b.a, m);
+      }
+    });
+
+    const centers = [];
+    for (let i = 0; i < n; i++) {
+      if (isH(i)) continue;
+      const a = A[i];
+      const heavy = adj[i].filter(function (e) { return !isH(e.j); });
+      const h = hInfo[i].total;
+      const allSingle = adj[i].every(function (e) { return B[e.b].type === 1; });
+      let candidate = false;
+      const okAtom = (a.sym === 'C' && a.charge === 0) ||
+                     ((a.sym === 'N' || a.sym === 'P') && a.charge === 1);
+      if (okAtom && allSingle && heavy.length + h === 4 && h <= 1) {
+        candidate = new Set(heavy.map(function (e) { return cls[e.j]; })).size === heavy.length;
+      }
+      const mk = marks.get(i);
+      const drawn = !!(mk && (mk.wedge || mk.hash)) && adj[i].length >= 3;
+      if (!candidate && !drawn) continue;
+
+      const state = drawn ? 'defined' : (mk && mk.either ? 'unknown' : 'undefined');
+      const nb = heavy.map(function (e) { return A[e.j].sym; }).sort();
+      for (let q = 0; q < h; q++) nb.push('H');
+      centers.push({ atom: i, state: state, nbrs: nb.join(', ') });
+    }
+
+    // double bonds that can show E/Z isomerism
+    function ringSizeThrough(bi) {
+      const start = B[bi].a, goal = B[bi].b;
+      const dist = new Map([[start, 0]]);
+      const queue = [start];
+      while (queue.length) {
+        const cur = queue.shift();
+        const d = dist.get(cur);
+        if (d >= 7) continue;
+        for (let q = 0; q < adj[cur].length; q++) {
+          const e = adj[cur][q];
+          if (e.b === bi || dist.has(e.j)) continue;
+          dist.set(e.j, d + 1);
+          if (e.j === goal) return d + 2; // ring size = path edges + 1
+          queue.push(e.j);
+        }
+      }
+      return 0;
+    }
+
+    const ez = [];
+    B.forEach(function (b, idx) {
+      if (b.type !== 2 || isH(b.a) || isH(b.b)) return;
+      let ok = true;
+      [b.a, b.b].forEach(function (end) {
+        const others = adj[end].filter(function (e) { return e.b !== idx && !isH(e.j); });
+        if (others.length === 0) ok = false;
+        else if (others.length === 2 && cls[others[0].j] === cls[others[1].j]) ok = false;
+        if (adj[end].some(function (e) { return e.b !== idx && B[e.b].type === 2; })) ok = false;
+      });
+      if (!ok) return;
+      const rs = ringSizeThrough(idx);
+      if (rs && rs < 8) return;
+      ez.push({ bond: idx, state: b.st === 3 ? 'unknown' : 'defined' });
+    });
+
+    let num = 1;
+    centers.forEach(function (c) { c.num = num++; });
+    ez.forEach(function (z) { z.num = num++; });
+    return { centers: centers, ez: ez };
+  }
+
+  function escXml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function renderStereoSvg(mol, res) {
+    const A = mol.atoms, B = mol.bonds;
+    const P = A.map(function (a) { return { x: a.x, y: -a.y }; });
+    let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+    P.forEach(function (p) {
+      minx = Math.min(minx, p.x); maxx = Math.max(maxx, p.x);
+      miny = Math.min(miny, p.y); maxy = Math.max(maxy, p.y);
+    });
+    let sum = 0, cnt = 0;
+    B.forEach(function (b) {
+      const d = Math.hypot(P[b.a].x - P[b.b].x, P[b.a].y - P[b.b].y);
+      if (d > 0) { sum += d; cnt++; }
+    });
+    const L = cnt ? sum / cnt : 1;
+    const pad = 1.3 * L;
+    const f = function (v) { return v.toFixed(3); };
+    const vb = [f(minx - pad), f(miny - pad), f(maxx - minx + 2 * pad), f(maxy - miny + 2 * pad)].join(' ');
+
+    const BLUE = '#1a4d8e', ORANGE = '#d35400', INK = '#222';
+    const sw = 0.07 * L;
+    const ln = function (x1, y1, x2, y2, w, extra) {
+      return '<line x1="' + f(x1) + '" y1="' + f(y1) + '" x2="' + f(x2) + '" y2="' + f(y2) +
+        '" stroke="' + (extra && extra.color || INK) + '" stroke-width="' + f(w) + '"' +
+        (extra && extra.dash ? ' stroke-dasharray="' + extra.dash + '"' : '') +
+        (extra && extra.cap ? ' stroke-linecap="' + extra.cap + '"' : '') +
+        (extra && extra.opacity ? ' stroke-opacity="' + extra.opacity + '"' : '') + '/>';
+    };
+
+    let under = '', bondsSvg = '', labels = '', badges = '';
+
+    // highlights (drawn underneath)
+    res.ez.forEach(function (z) {
+      const b = B[z.bond], pa = P[b.a], pb = P[b.b];
+      const col = z.state === 'defined' ? BLUE : ORANGE;
+      under += ln(pa.x, pa.y, pb.x, pb.y, 0.4 * L, {
+        color: col, opacity: '0.22', cap: 'round',
+        dash: z.state === 'defined' ? '' : (0.25 * L).toFixed(3) + ' ' + (0.2 * L).toFixed(3)
+      });
+      const mx = (pa.x + pb.x) / 2, my = (pa.y + pb.y) / 2;
+      const dx = pb.x - pa.x, dy = pb.y - pa.y, len = Math.hypot(dx, dy) || 1;
+      badges += badge(mx + (-dy / len) * 0.75 * L, my + (dx / len) * 0.75 * L, z.num, col);
+    });
+    res.centers.forEach(function (c) {
+      const p = P[c.atom];
+      const col = c.state === 'defined' ? BLUE : ORANGE;
+      under += '<circle cx="' + f(p.x) + '" cy="' + f(p.y) + '" r="' + f(0.5 * L) + '" fill="' + col +
+        '" fill-opacity="0.18" stroke="' + col + '" stroke-width="' + f(0.06 * L) + '"' +
+        (c.state === 'defined' ? '' : ' stroke-dasharray="' + (0.12 * L).toFixed(3) + ' ' + (0.1 * L).toFixed(3) + '"') + '/>';
+      badges += badge(p.x + 0.7 * L, p.y - 0.7 * L, c.num, col);
+    });
+
+    function badge(x, y, num, col) {
+      return '<text x="' + f(x) + '" y="' + f(y) + '" font-size="' + f(0.46 * L) +
+        '" font-weight="700" fill="' + col + '" text-anchor="middle" dominant-baseline="central"' +
+        ' stroke="#fff" stroke-width="' + f(0.12 * L) + '" paint-order="stroke">' + num + '</text>';
+    }
+
+    // bonds
+    B.forEach(function (b) {
+      const pa = P[b.a], pb = P[b.b];
+      const dx = pb.x - pa.x, dy = pb.y - pa.y, len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len, uy = dy / len, nx = -uy, ny = ux;
+      const sa = A[b.a].sym !== 'C' ? 0.34 * L : 0;
+      const sb = A[b.b].sym !== 'C' ? 0.34 * L : 0;
+      const x1 = pa.x + ux * sa, y1 = pa.y + uy * sa, x2 = pb.x - ux * sb, y2 = pb.y - uy * sb;
+
+      if (b.type === 1 && b.st === 1) {
+        const w = 0.16 * L;
+        bondsSvg += '<polygon points="' + f(x1) + ',' + f(y1) + ' ' + f(x2 + nx * w) + ',' + f(y2 + ny * w) +
+          ' ' + f(x2 - nx * w) + ',' + f(y2 - ny * w) + '" fill="' + INK + '"/>';
+      } else if (b.type === 1 && b.st === 6) {
+        for (let k = 1; k <= 6; k++) {
+          const t = k / 7, cx = x1 + (x2 - x1) * t, cy = y1 + (y2 - y1) * t, hw = 0.16 * L * t;
+          bondsSvg += ln(cx - nx * hw, cy - ny * hw, cx + nx * hw, cy + ny * hw, 0.05 * L);
+        }
+      } else if (b.type === 1 && b.st === 4) {
+        bondsSvg += ln(x1, y1, x2, y2, sw, { dash: (0.12 * L).toFixed(3) + ' ' + (0.1 * L).toFixed(3) });
+      } else if (b.type === 2) {
+        const o = 0.1 * L;
+        bondsSvg += ln(x1 + nx * o, y1 + ny * o, x2 + nx * o, y2 + ny * o, sw);
+        bondsSvg += ln(x1 - nx * o, y1 - ny * o, x2 - nx * o, y2 - ny * o, sw);
+      } else if (b.type === 3) {
+        const o = 0.14 * L;
+        bondsSvg += ln(x1, y1, x2, y2, sw);
+        bondsSvg += ln(x1 + nx * o, y1 + ny * o, x2 + nx * o, y2 + ny * o, sw);
+        bondsSvg += ln(x1 - nx * o, y1 - ny * o, x2 - nx * o, y2 - ny * o, sw);
+      } else {
+        bondsSvg += ln(x1, y1, x2, y2, sw);
+      }
+    });
+
+    // atom labels (anything that is not plain carbon)
+    A.forEach(function (a, i) {
+      if (a.sym === 'C' && !a.charge && !a.iso) return;
+      let txt = (a.iso ? String(a.iso) : '') + a.sym;
+      if (a.charge) txt += (a.charge > 0 ? '+' : '\u2212') + (Math.abs(a.charge) > 1 ? Math.abs(a.charge) : '');
+      labels += '<text x="' + f(P[i].x) + '" y="' + f(P[i].y) + '" font-size="' + f(0.5 * L) +
+        '" fill="' + INK + '" text-anchor="middle" dominant-baseline="central" stroke="#fff" stroke-width="' +
+        f(0.15 * L) + '" paint-order="stroke">' + escXml(txt) + '</text>';
+    });
+
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + vb + '" role="img" ' +
+      'aria-label="Structure with stereocenters and E/Z bonds highlighted" ' +
+      'style="width:100%;height:100%;display:block">' + under + bondsSvg + labels + badges + '</svg>';
+  }
+
+  function renderStereoPanel(mol, res) {
+    const svgBox = document.getElementById('stereo-svg');
+    const summary = document.getElementById('stereo-summary');
+    const list = document.getElementById('stereo-list');
+    list.textContent = '';
+
+    if (!res.centers.length && !res.ez.length) {
+      svgBox.innerHTML = renderStereoSvg(mol, res);
+      summary.className = 'stereo-summary';
+      summary.textContent = 'No stereocenters or stereogenic double bonds detected in this drawing.';
+      return;
+    }
+
+    svgBox.innerHTML = renderStereoSvg(mol, res);
+
+    const def = res.centers.filter(function (c) { return c.state === 'defined'; }).length;
+    const und = res.centers.filter(function (c) { return c.state === 'undefined'; }).length;
+    const unk = res.centers.filter(function (c) { return c.state === 'unknown'; }).length;
+    const ezUnk = res.ez.filter(function (z) { return z.state === 'unknown'; }).length;
+
+    const parts = [];
+    if (res.centers.length) {
+      let s = res.centers.length + ' stereocenter' + (res.centers.length > 1 ? 's' : '') +
+        ': ' + def + ' defined, ' + und + ' not specified';
+      if (unk) s += ', ' + unk + ' marked unknown';
+      parts.push(s);
+    }
+    if (res.ez.length) {
+      parts.push(res.ez.length + ' double bond' + (res.ez.length > 1 ? 's' : '') + ' with E/Z isomerism');
+    }
+    let text = parts.join('; ') + '.';
+    const needsCare = und > 0 || unk > 0 || ezUnk > 0;
+    if (needsCare) {
+      text += ' Where the configuration is not specified, the exact isomer is not identified. ' +
+              'If you know it, draw wedge/hash bonds (or set the double-bond geometry).';
+    }
+    summary.className = 'stereo-summary' + (needsCare ? ' warn' : '');
+    summary.textContent = text;
+
+    const A = mol.atoms, B = mol.bonds;
+    res.centers.forEach(function (c) {
+      const li = document.createElement('li');
+      const what = c.state === 'defined' ? 'defined (wedge/hash drawn)'
+        : c.state === 'unknown' ? 'marked unknown (wavy bond)'
+        : 'NOT specified (no wedge/hash drawn)';
+      li.textContent = c.num + '. ' + A[c.atom].sym + ' stereocenter, ' + what + '. Attached: ' + c.nbrs + '.';
+      list.appendChild(li);
+    });
+    res.ez.forEach(function (z) {
+      const b = B[z.bond];
+      const li = document.createElement('li');
+      const what = z.state === 'defined' ? 'geometry set by the drawing' : 'geometry unspecified (crossed bond)';
+      li.textContent = z.num + '. Double bond ' + A[b.a].sym + '=' + A[b.b].sym + ', ' + what + '.';
+      list.appendChild(li);
+    });
+  }
+
+  async function updateStereoView(k, smiles) {
+    const panel = document.getElementById('stereo-panel');
+    const myToken = ++stereoToken;
+    try {
+      if (!smiles) { panel.style.display = 'none'; return; }
+      const molfile = await k.getMolfile();
+      if (myToken !== stereoToken) return; // a newer drawing replaced this one
+      const mol = parseMolfile(molfile);
+      panel.style.display = 'block';
+      if (!mol) {
+        document.getElementById('stereo-svg').textContent = '';
+        document.getElementById('stereo-list').textContent = '';
+        const s = document.getElementById('stereo-summary');
+        s.className = 'stereo-summary';
+        s.textContent = 'Stereo view is not available for this structure format. This does not affect the prediction.';
+        return;
+      }
+      renderStereoPanel(mol, analyzeStereoGeometry(mol));
+    } catch (e) {
+      // never let the preview interfere with the rest of the page
+      if (myToken === stereoToken) panel.style.display = 'none';
+    }
+  }
+
+  // ========================================================================
   // refreshStructureInfo - updates info boxes + kicks off optional name lookup
   // ========================================================================
   async function refreshStructureInfo() {
@@ -863,6 +1316,7 @@
       document.getElementById('fragment-warning').style.display = 'none';
       document.getElementById('chem-audit-box').style.display = 'none';
       currentFragments = [];
+      updateStereoView(k, '');
       maybeAutofillNames('');
       return;
     }
@@ -870,6 +1324,9 @@
     const audit = analyzeChemistryFull(smiles);
     checkFragments(smiles);
     renderChemAudit(audit);
+
+    // optional preview, isolated from everything below
+    updateStereoView(k, smiles);
 
     const stereoAudit = buildStereoAudit(audit);
     document.getElementById('stereo_audit_json').value = JSON.stringify(stereoAudit);
@@ -920,7 +1377,7 @@
     fragments.forEach(function (frag, i) {
       const isSuggested = i === likelyParentIdx;
       html += '<button type="button" class="' + (isSuggested ? 'suggested' : '') + '" onclick="useFragmentOnly(' + i + ')">' +
-        (isSuggested ? '★ ' : '') + 'Use fragment ' + (i + 1) + ' only (' + frag + ')' +
+        (isSuggested ? '★ ' : '') + 'Use fragment ' + (i + 1) + ' only (' + escXml(frag) + ')' +
         (isSuggested ? ' — likely parent' : '') + '</button>';
     });
     html += '<button type="button" onclick="dismissFragmentWarning()">Keep all as separate structures (' + fragments.length + ' predictions)</button></div>';
@@ -993,11 +1450,12 @@
       }
 
       const audit = analyzeChemistryFull(smiles);
-      const multiDrugChecked = document.getElementById('multi-drug-mode') ? document.getElementById('multi-drug-mode').checked : true;
-      const isMulti = audit.n_fragments > 1 && multiDrugChecked;
+      // Multiple disconnected structures are always predicted as separate drugs
+      // (the user can first pick a single fragment with the buttons above).
+      const isMulti = audit.n_fragments > 1;
 
       if (isMulti) {
-        if (!confirm(`You drew ${audit.n_fragments} disconnected structures. They will be predicted as ${audit.n_fragments} separate drugs, each with its own report entry. Continue?`)) {
+        if (!confirm('You drew ' + audit.n_fragments + ' disconnected structures. They will be predicted as ' + audit.n_fragments + ' separate drugs, each with its own report entry. Continue?')) {
           setSubmitting(false);
           return false;
         }
@@ -1042,4 +1500,5 @@
   // Back/forward cache: make sure the button isn't stuck in "Preparing…"
   window.addEventListener('pageshow', function () { setSubmitting(false); });
 </script>
+{% endverbatim %}
 {% endblock %}
