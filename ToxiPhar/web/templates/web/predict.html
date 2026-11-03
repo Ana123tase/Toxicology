@@ -19,6 +19,9 @@
     cursor:pointer;
   }
 
+  /* Layout: no fixed height + overflow:hidden on the box (that clipped the footer).
+     Only the editor area has a controlled height; everything else flows below it,
+     and the footer is sticky so Predict is always reachable. */
   #draw-box{
     position:relative;
     display:flex;
@@ -26,16 +29,12 @@
     border:1px solid var(--line);
     border-radius:var(--radius-sm);
     background:var(--paper);
-    overflow:hidden;
-    height:calc(100vh - 260px);
-    min-height:640px;
   }
   #draw-box.is-fullscreen{
     position:fixed;
     inset:0;
     z-index:1000;
     height:100vh;
-    min-height:0;
     border:none;
     border-radius:0;
   }
@@ -48,6 +47,7 @@
     padding:6px 8px;
     border-bottom:1px solid var(--line);
     flex-wrap:wrap;
+    flex-shrink:0;
   }
   .draw-toolbar-left{
     display:flex;
@@ -58,15 +58,23 @@
     font-size:0.8rem;
     padding:4px 8px;
   }
+  #expand-editor-btn{ font-size:0.8rem; }
 
-  #expand-editor-btn{
-    font-size:0.8rem;
-  }
-
-  #ketcher-frame{
-    width:100%;
-    flex:1 1 auto;
+  .editor-wrap{
+    height:clamp(420px, calc(100vh - 360px), 780px);
     min-height:320px;
+    flex-shrink:0;
+    background:#fff;
+  }
+  #draw-box.is-fullscreen .editor-wrap{
+    flex:1 1 auto;
+    height:auto;
+    min-height:0;
+  }
+  #ketcher-frame{
+    display:block;
+    width:100%;
+    height:100%;
     border:none;
     background:#fff;
   }
@@ -74,13 +82,21 @@
   #smiles-box{
     padding:10px 12px;
     border-top:1px solid var(--line);
+    flex-shrink:0;
   }
   .smiles-input-row{
     display:flex;
     gap:8px;
   }
-  .smiles-input-row input{
-    flex:1;
+  .smiles-input-row input{ flex:1; }
+
+  .draw-panels{
+    flex-shrink:0;
+    padding-top:8px;
+  }
+  #draw-box.is-fullscreen .draw-panels{
+    max-height:28vh;
+    overflow:auto;
   }
 
   .notice-box{
@@ -108,7 +124,6 @@
     border-color:#5b4300;
   }
 
-  /* Chemistry audit - same visual language as notice-box, no extra toolbox */
   .chem-audit-box{
     margin:0 12px 8px;
     padding:8px 10px;
@@ -139,98 +154,48 @@
     gap:4px 16px;
   }
 
-  /* Multi-drug panel - green, distinct from yellow fragment warning */
-  .multi-drug-panel{
-    margin:0 12px 8px;
-    padding:10px;
-    border:1px solid #2a7d4f;
-    background:#eef8f1;
-    border-radius:4px;
-  }
-  .multi-drug-panel h4{
-    margin:0 0 6px;
-    font-size:0.85rem;
-    color:#1a4d2e;
-  }
-  .multi-drug-list{
-    display:flex;
-    flex-direction:column;
-    gap:6px;
-    max-height:160px;
-    overflow:auto;
-  }
-  .multi-drug-item{
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    padding:6px 8px;
-    background:#fff;
-    border:1px solid #c8e6d0;
-    border-radius:4px;
-    font-size:0.8rem;
-  }
-  .multi-drug-item .mono{
-    font-family:monospace;
-    word-break:break-all;
-  }
-  .multi-drug-item .tag{
-    font-size:0.7rem;
-    padding:2px 6px;
-    border-radius:10px;
-    background:#2a7d4f;
-    color:#fff;
-    margin-left:8px;
-    flex-shrink:0;
-  }
-  .multi-drug-item .tag.stereo{ background:#1a4d8e; }
-  .multi-drug-item .tag.iso{ background:#8e44ad; }
-  .multi-drug-item .tag.taut{ background:#d35400; }
-
-  .structure-info{
-    padding:8px 12px;
-    border-top:1px solid var(--line);
-    display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(190px,1fr));
-    gap:4px 16px;
-    font-size:0.82rem;
-  }
-  .structure-info-row{
-    display:flex;
-    justify-content:space-between;
-    gap:8px;
-  }
-  .structure-info .label{
-    color:var(--muted, #777);
-  }
-  .structure-info .value{
-    font-weight:600;
-    text-align:right;
-    word-break:break-all;
-  }
-
+  /* Footer: always visible (sticky) so Predict can never be lost */
   .draw-box-footer{
+    position:sticky;
+    bottom:0;
+    z-index:5;
     display:flex;
     align-items:flex-end;
     gap:12px;
     padding:10px 12px;
     border-top:1px solid var(--line);
     background:var(--paper);
+    box-shadow:0 -4px 10px rgba(0,0,0,0.08);
     flex-wrap:wrap;
     flex-shrink:0;
   }
   .draw-box-footer .field-group{
-    flex:1 1 240px;
+    flex:1 1 200px;
     margin:0;
   }
-  .draw-box-footer .required{
-    color:#c0392b;
-  }
+  .draw-box-footer .required{ color:#c0392b; }
   .draw-box-footer .btn{
     flex:0 0 auto;
+    white-space:nowrap;
+  }
+  .draw-box-footer .btn[disabled]{
+    opacity:0.65;
+    cursor:wait;
+  }
+  .name-status{
+    display:block;
+    min-height:1em;
+    margin-top:2px;
+    font-size:0.72rem;
+    color:var(--muted, #777);
   }
 
   .fallback-box{ display:none; }
   .fallback-box.active{ display:block; }
+
+  @media (max-width:640px){
+    .draw-box-footer .btn{ width:100%; }
+  }
 </style>
 {% endblock %}
 
@@ -248,6 +213,12 @@
     multi-component structures (salts or mixtures) are all fully supported. Note that a formula
     describes composition only, not connectivity, so the editor makes a best-effort structure
     guess from it — for an exact isomer, draw the structure or paste a SMILES string instead.
+  </p>
+  <p class="muted">
+    The generic and chemical names are optional. If you leave them empty, we try to suggest them
+    from PubChem (and, for the chemical name only, NCI CIR) — but only when the database record
+    matches exactly the structure you drew. If nothing matches, or a service can't be reached,
+    the fields are simply left blank.
   </p>
 
   <form method="post" action="{% url 'web:predict' %}" id="predict-form" class="card">
@@ -282,10 +253,12 @@
         <button type="button" id="expand-editor-btn" onclick="toggleEditorFullscreen()">Expand editor</button>
       </div>
 
-      <iframe id="ketcher-frame"
-              src="{% static 'ketcher/index.html' %}"
-              allow="clipboard-read; clipboard-write"
-              onload="onKetcherFrameLoad()"></iframe>
+      <div class="editor-wrap">
+        <iframe id="ketcher-frame"
+                src="{% static 'ketcher/index.html' %}"
+                allow="clipboard-read; clipboard-write"
+                onload="onKetcherFrameLoad()"></iframe>
+      </div>
 
       <div id="smiles-box" class="fallback-box field-group">
         <label for="smiles_manual">SMILES</label>
@@ -314,9 +287,10 @@
         <p id="formula-load-status" class="muted" style="font-size:0.8rem;"></p>
       </div>
 
-      <div id="fragment-warning" class="notice-box" style="display:none;"></div>
-
-      <div id="chem-audit-box" class="chem-audit-box" style="display:none;"></div>
+      <div class="draw-panels">
+        <div id="fragment-warning" class="notice-box" style="display:none;"></div>
+        <div id="chem-audit-box" class="chem-audit-box" style="display:none;"></div>
+      </div>
 
       <div class="draw-box-footer">
         <div class="field-group">
@@ -324,14 +298,15 @@
           <input type="text" id="brand_name" name="brand_name" class="mono" required placeholder="e.g. Tylenol">
         </div>
         <div class="field-group">
-          <label for="generic_name">Generic name</label>
+          <label for="generic_name">Generic name (optional)</label>
           <input type="text" id="generic_name" name="generic_name" class="mono" placeholder="e.g. Acetaminophen">
         </div>
         <div class="field-group">
-          <label for="chemical_name">Chemical name</label>
+          <label for="chemical_name">Chemical name (optional)</label>
           <input type="text" id="chemical_name" name="chemical_name" class="mono" placeholder="e.g. N-(4-hydroxyphenyl)acetamide">
+          <span id="name-status" class="name-status" aria-live="polite"></span>
         </div>
-        <button type="submit" class="btn btn-primary" onclick="return prepareSubmit()">Predict toxicity</button>
+        <button type="submit" id="predict-btn" class="btn btn-primary">Predict toxicity</button>
       </div>
 
     </div>
@@ -354,7 +329,7 @@
 {% block extra_js %}
 <script>
   // ========================================================================
-  // Ketcher loader - preserves original iframe appearance, no external toolbox
+  // Ketcher loader
   // ========================================================================
   let ketcherSubscribed = false;
   let currentFragments = [];
@@ -387,7 +362,6 @@
         try {
           k.editor.subscribe('change', debounce(refreshStructureInfo, 400));
         } catch (e) {
-          // fallback polling if subscribe not available
           setInterval(refreshStructureInfo, 2500);
         }
       }
@@ -404,7 +378,242 @@
   }
 
   // ========================================================================
-  // Import / Export / Reset - original functionalities preserved
+  // Optional name suggestion
+  //
+  // Priority order (highest first):
+  //   1. Generic name   <- PubChem synonym list (INN-style heuristic)
+  //   2. Chemical name  <- PubChem IUPACName (same record, exact match only)
+  //   3. Chemical name  <- NCI CIR fallback (lowest priority; background only,
+  //                        never waited for on submit, skipped when the
+  //                        drawing has stereo/isotope info it can't verify)
+  //
+  // Rules:
+  //   - A name is only filled when the database record matches EXACTLY what
+  //     was drawn (PubChem identity search, stereo + isotope sensitive).
+  //     There is NO flat-structure fallback.
+  //   - Anything the user typed is never overwritten.
+  //   - Any failure/timeout/miss leaves the field blank, silently.
+  //   - Multi-component drawings are skipped (a name belongs to one structure).
+  // ========================================================================
+  const PUBCHEM_BASE = 'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound';
+  const CIR_BASE = 'https://cactus.nci.nih.gov/chemical/structure/';
+  const NET_TIMEOUT_MS = 8000;     // per network request
+  const SUBMIT_WAIT_MS = 5000;     // max extra wait at submit (priority lookup only)
+
+  const nameState = {
+    chemEdited: false,
+    genEdited: false,
+    chemAuto: false,
+    genAuto: false,
+    lastSmiles: '',
+    token: 0,
+    pubchemCache: new Map(),   // smiles -> result | null (clean misses only)
+    pubchemPending: new Map(), // smiles -> in-flight promise
+    cirCache: new Map()        // smiles -> {iupac} | null
+  };
+
+  (function wireNameInputs() {
+    const chem = document.getElementById('chemical_name');
+    const gen = document.getElementById('generic_name');
+    chem.addEventListener('input', function () {
+      nameState.chemEdited = chem.value.trim() !== '';
+      nameState.chemAuto = false;
+      setNameStatus('');
+    });
+    gen.addEventListener('input', function () {
+      nameState.genEdited = gen.value.trim() !== '';
+      nameState.genAuto = false;
+    });
+  })();
+
+  function setNameStatus(msg) {
+    document.getElementById('name-status').textContent = msg || '';
+  }
+  function needGen() {
+    return !nameState.genEdited && document.getElementById('generic_name').value.trim() === '';
+  }
+  function needChem() {
+    return !nameState.chemEdited && document.getElementById('chemical_name').value.trim() === '';
+  }
+
+  // fetch + read body inside the timeout window
+  async function fetchRead(url, init, ms) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(function () { ctrl.abort(); }, ms);
+    try {
+      const res = await fetch(url, Object.assign({}, init || {}, { signal: ctrl.signal }));
+      const text = await res.text();
+      return { ok: res.ok, status: res.status, text: text };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // ---- PubChem: exact identity match (same stereo + isotopes) --------------
+  // Returns null for a clean miss (not found / ambiguous), throws on network trouble.
+  async function pubchemProperties(smiles) {
+    const r = await fetchRead(
+      PUBCHEM_BASE + '/smiles/property/IUPACName/JSON',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ smiles: smiles })
+      },
+      NET_TIMEOUT_MS
+    );
+    if (r.status === 404 || r.status === 400) return null;
+    if (!r.ok) throw new Error('PubChem ' + r.status);
+    const data = JSON.parse(r.text);
+    const props = data && data.PropertyTable && data.PropertyTable.Properties;
+    // more than one record = ambiguous; don't guess
+    if (!props || props.length !== 1) return null;
+    return { cid: props[0].CID, iupac: props[0].IUPACName || '' };
+  }
+
+  async function pubchemSynonyms(cid) {
+    const r = await fetchRead(PUBCHEM_BASE + '/cid/' + encodeURIComponent(cid) + '/synonyms/JSON', null, NET_TIMEOUT_MS);
+    if (!r.ok) throw new Error('PubChem synonyms ' + r.status);
+    const data = JSON.parse(r.text);
+    const info = data && data.InformationList && data.InformationList.Information;
+    return (info && info[0] && info[0].Synonym) || [];
+  }
+
+  // Generic (INN-style) names are typically plain lowercase words: "aspirin",
+  // "acetaminophen", "sodium valproate". Reject anything with digits, commas,
+  // brackets, capitals-only abbreviations, CAS/UNII-style codes, etc.
+  // Heuristic: if nothing qualifies, the field is left blank.
+  function pickGenericName(synonyms) {
+    const re = /^[a-z]+(?:[- ][a-z]+){0,2}$/;
+    const list = (synonyms || []).slice(0, 40);
+    for (let i = 0; i < list.length; i++) {
+      const s = String(list[i]).trim();
+      if (s.length >= 4 && s.length <= 40 && re.test(s)) {
+        return s.charAt(0).toUpperCase() + s.slice(1);
+      }
+    }
+    return '';
+  }
+
+  function pubchemLookup(smiles) {
+    if (nameState.pubchemCache.has(smiles)) return Promise.resolve(nameState.pubchemCache.get(smiles));
+    if (nameState.pubchemPending.has(smiles)) return nameState.pubchemPending.get(smiles);
+
+    const p = (async function () {
+      try {
+        const props = await pubchemProperties(smiles);
+        if (!props) { nameState.pubchemCache.set(smiles, null); return null; }
+        let generic = '';
+        let complete = true;
+        try {
+          generic = pickGenericName(await pubchemSynonyms(props.cid));
+        } catch (e) {
+          complete = false; // synonyms unavailable: leave generic blank, retry next time
+        }
+        const result = { iupac: props.iupac, generic: generic };
+        if (complete) nameState.pubchemCache.set(smiles, result);
+        return result;
+      } catch (e) {
+        return null; // network/timeout: not cached
+      }
+    })().finally(function () { nameState.pubchemPending.delete(smiles); });
+
+    nameState.pubchemPending.set(smiles, p);
+    return p;
+  }
+
+  // ---- NCI CIR: lowest-priority fallback for the chemical name only --------
+  // CIR may match on connectivity only, so it is used only when the drawing
+  // has no stereo or isotope information it could silently get wrong.
+  function cirEligible(smiles) {
+    return !/[@\/\\]/.test(smiles) && !/\[\d+/.test(smiles);
+  }
+
+  async function cirLookup(smiles) {
+    if (nameState.cirCache.has(smiles)) return nameState.cirCache.get(smiles);
+    try {
+      const r = await fetchRead(CIR_BASE + encodeURIComponent(smiles) + '/iupac_name', null, NET_TIMEOUT_MS);
+      if (r.status === 404) { nameState.cirCache.set(smiles, null); return null; }
+      if (!r.ok) return null;
+      const name = (r.text || '').split('\n')[0].trim();
+      if (!name || name.charAt(0) === '<') return null;
+      const result = { iupac: name };
+      nameState.cirCache.set(smiles, result);
+      return result;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ---- applying results -----------------------------------------------------
+  function clearStaleAutoNames() {
+    const chem = document.getElementById('chemical_name');
+    const gen = document.getElementById('generic_name');
+    if (nameState.chemAuto && !nameState.chemEdited) { chem.value = ''; nameState.chemAuto = false; }
+    if (nameState.genAuto && !nameState.genEdited) { gen.value = ''; nameState.genAuto = false; }
+  }
+
+  function fillGeneric(value) {
+    const gen = document.getElementById('generic_name');
+    if (!value || !needGen()) return false;
+    gen.value = value; nameState.genAuto = true;
+    return true;
+  }
+  function fillChemical(value) {
+    const chem = document.getElementById('chemical_name');
+    if (!value || !needChem()) return false;
+    chem.value = value; nameState.chemAuto = true;
+    return true;
+  }
+
+  function withTimeout(promise, ms) {
+    return Promise.race([promise, new Promise(function (resolve) { setTimeout(resolve, ms); })]);
+  }
+
+  // Runs on every structure change (and on submit).
+  // Returns a promise for the PRIORITY stage only (PubChem). The CIR fallback is
+  // launched in the background and is never awaited.
+  function maybeAutofillNames(smiles, opts) {
+    opts = opts || {};
+    const myToken = ++nameState.token;
+    const fragments = (smiles || '').split('.').filter(Boolean);
+
+    const changed = (smiles || '') !== nameState.lastSmiles;
+    nameState.lastSmiles = smiles || '';
+    if (changed) { clearStaleAutoNames(); setNameStatus(''); }
+
+    if (!smiles || fragments.length !== 1) {
+      setNameStatus(fragments.length > 1 ? 'Name suggestion skipped for multi-structure drawings.' : '');
+      return Promise.resolve();
+    }
+    if (!needGen() && !needChem()) return Promise.resolve();
+
+    setNameStatus('Looking up names…');
+
+    return (async function () {
+      const result = await pubchemLookup(smiles);
+      if (myToken !== nameState.token) return; // a newer structure replaced this one
+
+      const filled = [];
+      if (result) {
+        if (fillGeneric(result.generic)) filled.push('generic name');
+        if (fillChemical(result.iupac)) filled.push('chemical name');
+      }
+      setNameStatus(filled.length ? 'Suggested by PubChem (' + filled.join(' + ') + ') — please verify.' : '');
+
+      // Lowest priority: chemical name from NCI CIR, background only.
+      if (!opts.skipFallback && needChem() && cirEligible(smiles)) {
+        cirLookup(smiles).then(function (r) {
+          if (myToken !== nameState.token) return;
+          if (r && fillChemical(r.iupac)) {
+            setNameStatus('Chemical name suggested by NCI CIR — please verify.');
+          }
+        }).catch(function () {});
+      }
+    })().catch(function () { setNameStatus(''); });
+  }
+
+  // ========================================================================
+  // Import / Export / Reset
   // ========================================================================
   async function loadSmilesIntoEditor() {
     const manual = document.getElementById('smiles_manual').value.trim();
@@ -429,9 +638,6 @@
     const k = getKetcher();
     if (!k) { status.textContent = 'Editor is still loading — try again in a moment.'; return; }
     try {
-      // Ketcher accepts molfile/SMILES/InChI natively; a bare formula has no connectivity
-      // information, so this is a best-effort load — the editor (or its structService, where
-      // available) attempts to resolve it into a structure.
       await k.setMolecule(manual);
       status.textContent = 'Loaded. Please double-check the structure guessed from this formula before predicting.';
       refreshStructureInfo();
@@ -503,50 +709,46 @@
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   }
 
-  function toggleEditorFullscreen() {
+  // Fullscreen: lock page scroll while open, Esc to exit
+  function setEditorFullscreen(expanding) {
     const box = document.getElementById('draw-box');
     const btn = document.getElementById('expand-editor-btn');
-    const expanding = !box.classList.contains('is-fullscreen');
     box.classList.toggle('is-fullscreen', expanding);
+    document.body.style.overflow = expanding ? 'hidden' : '';
     btn.textContent = expanding ? 'Exit fullscreen' : 'Expand editor';
   }
+  function toggleEditorFullscreen() {
+    const box = document.getElementById('draw-box');
+    setEditorFullscreen(!box.classList.contains('is-fullscreen'));
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && document.getElementById('draw-box').classList.contains('is-fullscreen')) {
+      setEditorFullscreen(false);
+    }
+  });
 
   // ========================================================================
-  // Client-side chemistry audit - HEURISTIC ONLY, matches clean_smiles.py and featurize.py logic
-  // Server re-computes with RDKit - this is for UX, not trust boundary.
-  // See:
-  //   clean_smiles.py: _stereo_counts, _ez_counts, _contains_metal, _isotope_audit, _tautomer_audit
-  //   featurize.py: _ez_counts_simple (BondStereo STEREOE/Z + FindPotentialStereo), _isotope_audit (GetIsotope), _tautomer_audit (TautomerEnumerator), _stereo_audit
-  //   featurize.py: MODEL_STEREO_FEATURES list
+  // Client-side chemistry audit - HEURISTIC ONLY; server recomputes with RDKit
   // ========================================================================
   function analyzeChemistryFull(smiles) {
-    // fragments by '.' - multi-drug or salt. clean_smiles.py splits fragments for salt_removed vs mixture vs metal_complex
     const fragments = smiles.split('.').filter(Boolean);
 
-    // R/S tetrahedral: @ and @@. In SMILES, @ means R/S. clean_smiles.py counts via FindMolChiralCenters(includeUnassigned=True)
-    // Here heuristic: count @@ as one center, @ not part of @@ as one
     const atCount = (smiles.match(/@/g) || []).length;
     const doubleAt = (smiles.match(/@@/g) || []).length;
     const singleAt = atCount - doubleAt * 2;
-    const n_chiral_markers = doubleAt + singleAt; // approx n_stereocenters assigned
+    const n_chiral_markers = doubleAt + singleAt;
 
-    // E/Z: / and \ . In SMILES, / and \ encode E/Z. clean_smiles.py: _ez_counts via BondStereo + FindPotentialStereo
-    // Heuristic: count slashes
     const countSlash = (smiles.split('/').length - 1);
     const countBackslash = (smiles.split('\\').length - 1);
     const ezMarkersFinal = countSlash + countBackslash;
     const hasTetrahedral = atCount > 0;
     const hasCisTrans = ezMarkersFinal > 0;
 
-    // Isotope: [13C], [2H], [15N], etc. clean_smiles.py: has_isotope, isotope_labels. featurize.py: _isotope_audit via GetIsotope()
-    // Pattern: [13C], [13CH4], [2H], [15N]
     const isotopeMatches = smiles.match(/\[\d+[A-Z][a-z]?[^\]]*\]/g) || [];
     const hasIsotope = isotopeMatches.length > 0;
     const n_isotope_atoms = isotopeMatches.length;
     const isotope_labels = isotopeMatches.join(';');
 
-    // Tautomer-risk heuristic - clean_smiles.py has_tautomer via RDKit TautomerEnumerator, but we flag motifs
-    // keto-enol C(=O)CC <-> C(O)=CC, amide-imidic, imine-enamine, phenol
     let tautomerRisk = false;
     let tautomerHint = '';
     const lower = smiles.toLowerCase();
@@ -555,12 +757,10 @@
       tautomerHint = 'keto-enol / amide-imidic / imine-enamine / phenol motif';
     }
 
-    // Approximate MODEL_STEREO_FEATURES - server recomputes accurately
     const n_total_chiral_approx = n_chiral_markers;
-    const n_assigned_approx = n_chiral_markers; // frontend assumes if @ present, assigned
-    const n_unassigned_approx = 0; // cannot detect unassigned without RDKit - server will via FindMolChiralCenters includeUnassigned
+    const n_assigned_approx = n_chiral_markers;
+    const n_unassigned_approx = 0;
 
-    // E/Z: each E/Z bond has 2 slash markers (one per side), so bonds approx markers/2
     const n_ez_assigned_approx = hasCisTrans ? Math.floor(ezMarkersFinal / 2) || 1 : 0;
     const n_ez_total_approx = n_ez_assigned_approx;
 
@@ -568,103 +768,34 @@
       smiles: smiles,
       fragments: fragments,
       n_fragments: fragments.length,
-      // tetrahedral R/S
       hasTetrahedral: hasTetrahedral,
       atCount: atCount,
       n_stereocenters: n_total_chiral_approx,
       n_assigned_stereocenters: n_assigned_approx,
       n_unassigned_stereocenters: n_unassigned_approx,
       has_chiral: n_total_chiral_approx > 0,
-      // E/Z
       hasCisTrans: hasCisTrans,
       ezMarkers: ezMarkersFinal,
       n_ez_bonds: n_ez_total_approx,
       n_assigned_ez: n_ez_assigned_approx,
       n_unassigned_ez: 0,
       has_ez: n_ez_total_approx > 0,
-      // combined
       has_stereo: (n_total_chiral_approx > 0 || n_ez_total_approx > 0),
-      has_unassigned_stereo: false, // server will compute
+      has_unassigned_stereo: false,
       has_unassigned_ez: false,
       is_stereoisomer_defined: (n_total_chiral_approx > 0 || n_ez_total_approx > 0),
-      // isotope
       has_isotope: hasIsotope,
       n_isotope_atoms: n_isotope_atoms,
       isotope_labels: isotope_labels,
       isotope_matches: isotopeMatches,
-      // tautomer
       has_tautomer: tautomerRisk,
       tautomer_risk: tautomerRisk,
-      tautomer_hint: tautomerHint,
+      tautomer_hint: tautomerHint
     };
   }
 
-  function renderChemAudit(audit) {
-    const box = document.getElementById('chem-audit-box');
-    if (!audit || !audit.smiles) { box.style.display = 'none'; return; }
-    let html = '<div class="chem-audit-grid">';
-
-    // R/S
-    if (audit.hasTetrahedral) {
-      html += `<div><strong>Stereocenters:</strong> ${audit.n_stereocenters} detected. Each isomer is tracked separately since enantiomers can differ in activity.</div>`;
-    }
-
-    // E/Z
-    if (audit.hasCisTrans) {
-      html += `<div><strong>Double-bond geometry:</strong> ~${audit.n_ez_bonds} E/Z bond(s) marked. These are tracked separately since they can differ in activity.</div>`;
-    }
-
-    // Isotope
-    if (audit.has_isotope) {
-      html += `<div><strong>Isotopes:</strong> ${audit.isotope_matches.join(', ')} detected and preserved.</div>`;
-    }
-
-    // Tautomer
-    if (audit.has_tautomer) {
-      html += `<div><strong>Tautomers:</strong> This structure may have alternate tautomeric forms; each will be scored on its own.</div>`;
-    }
-
-    // Multi-drug
-    if (audit.n_fragments > 1) {
-      html += `<div><strong>Multiple structures:</strong> ${audit.n_fragments} disconnected components — each will be predicted as its own drug.</div>`;
-    }
-
-    html += '</div>';
-    let level = 'success';
-    if (!audit.hasTetrahedral && audit.smiles.length > 15) level = 'warning';
-    if (audit.has_isotope || audit.has_tautomer) level = 'info';
-    box.className = 'chem-audit-box ' + level;
-    box.innerHTML = html;
-    box.style.display = 'block';
-  }
-
-  // ========================================================================
-  // refreshStructureInfo - updates all info boxes, consistent with pipeline
-  // ========================================================================
-  async function refreshStructureInfo() {
-    const k = getKetcher();
-    if (!k) return;
-
-    let smiles = '';
-    try { smiles = await k.getSmiles(); } catch (e) {}
-
-    if (!smiles) {
-      document.getElementById('fragment-warning').style.display = 'none';
-      document.getElementById('chem-audit-box').style.display = 'none';
-      currentFragments = [];
-      return;
-    }
-
-    // Full chemistry audit - heuristic, server recomputes accurately
-    const audit = analyzeChemistryFull(smiles);
-
-    // Fragment handling
-    checkFragments(smiles);
-    renderChemAudit(audit);
-
-    // Fill hidden fields - these go to server, server re-validates with RDKit, never trusts client alone
-    const stereoAudit = {
-      // MODEL_STEREO_FEATURES from featurize.py - client heuristic, server recomputes
+  function buildStereoAudit(audit) {
+    return {
       n_stereocenters: audit.n_stereocenters,
       n_assigned_stereocenters: audit.n_assigned_stereocenters,
       n_unassigned_stereocenters: audit.n_unassigned_stereocenters,
@@ -680,17 +811,70 @@
       has_isotope: audit.has_isotope,
       n_isotope_atoms: audit.n_isotope_atoms,
       has_tautomer: audit.has_tautomer,
-      // extra for audit trail
       isotope_labels: audit.isotope_labels,
       atCount: audit.atCount,
       ezMarkers: audit.ezMarkers,
-      n_fragments: audit.n_fragments
+      n_fragments: audit.n_fragments,
+      fragments: audit.fragments
     };
+  }
+
+  function renderChemAudit(audit) {
+    const box = document.getElementById('chem-audit-box');
+    if (!audit || !audit.smiles) { box.style.display = 'none'; return; }
+    let html = '<div class="chem-audit-grid">';
+
+    if (audit.hasTetrahedral) {
+      html += `<div><strong>Stereocenters:</strong> ${audit.n_stereocenters} detected. Each isomer is tracked separately since enantiomers can differ in activity.</div>`;
+    }
+    if (audit.hasCisTrans) {
+      html += `<div><strong>Double-bond geometry:</strong> ~${audit.n_ez_bonds} E/Z bond(s) marked. These are tracked separately since they can differ in activity.</div>`;
+    }
+    if (audit.has_isotope) {
+      html += `<div><strong>Isotopes:</strong> ${audit.isotope_matches.join(', ')} detected and preserved.</div>`;
+    }
+    if (audit.has_tautomer) {
+      html += `<div><strong>Tautomers:</strong> This structure may have alternate tautomeric forms; each will be scored on its own.</div>`;
+    }
+    if (audit.n_fragments > 1) {
+      html += `<div><strong>Multiple structures:</strong> ${audit.n_fragments} disconnected components — each will be predicted as its own drug.</div>`;
+    }
+
+    html += '</div>';
+    let level = 'success';
+    if (!audit.hasTetrahedral && audit.smiles.length > 15) level = 'warning';
+    if (audit.has_isotope || audit.has_tautomer) level = 'info';
+    box.className = 'chem-audit-box ' + level;
+    box.innerHTML = html;
+    box.style.display = 'block';
+  }
+
+  // ========================================================================
+  // refreshStructureInfo - updates info boxes + kicks off optional name lookup
+  // ========================================================================
+  async function refreshStructureInfo() {
+    const k = getKetcher();
+    if (!k) return;
+
+    let smiles = '';
+    try { smiles = await k.getSmiles(); } catch (e) {}
+
+    if (!smiles) {
+      document.getElementById('fragment-warning').style.display = 'none';
+      document.getElementById('chem-audit-box').style.display = 'none';
+      currentFragments = [];
+      maybeAutofillNames('');
+      return;
+    }
+
+    const audit = analyzeChemistryFull(smiles);
+    checkFragments(smiles);
+    renderChemAudit(audit);
+
+    const stereoAudit = buildStereoAudit(audit);
     document.getElementById('stereo_audit_json').value = JSON.stringify(stereoAudit);
     document.getElementById('full_chemistry_json').value = JSON.stringify(audit);
     document.getElementById('model_features_json').value = JSON.stringify({
-      // group1_connectivity (descriptors + ECFP) computed server-side
-      // group2_stereo_stable (MODEL_STEREO_FEATURES + ECFP stereo) - client provides heuristic, server recomputes
       group2_stereo_stable: stereoAudit,
       audit_only: {
         has_tautomer: audit.has_tautomer,
@@ -698,12 +882,13 @@
         tautomer_hint: audit.tautomer_hint,
         fragments: audit.fragments
       },
-      // isomeric SMILES itself - preserves all isomerism
       SMILES_isomeric: smiles,
-      // fragments for multi-drug
       SMILES_list: audit.fragments,
       is_multi_drug: audit.n_fragments > 1
     });
+
+    // optional, fire-and-forget
+    maybeAutofillNames(smiles);
   }
 
   function checkFragments(smiles) {
@@ -746,7 +931,7 @@
   async function useFragmentOnly(index) {
     const box = document.getElementById('fragment-warning');
     let fragments = [];
-    try { fragments = JSON.parse(box.dataset.fragments || '[]'); } catch(e) { fragments = currentFragments; }
+    try { fragments = JSON.parse(box.dataset.fragments || '[]'); } catch (e) { fragments = currentFragments; }
     const frag = fragments[index];
     if (!frag) return;
     const win = getKetcherWin();
@@ -763,57 +948,70 @@
   }
 
   // ========================================================================
-  // prepareSubmit - sends all chemistry info consistent with pipeline
+  // Submit handling
+  //  - Predict button and Enter key both go through prepareSubmit()
+  //  - at submit, only the PRIORITY name lookup (PubChem) gets a short last
+  //    chance (max SUBMIT_WAIT_MS); CIR is never waited for. A failed or slow
+  //    lookup never blocks the prediction.
   // ========================================================================
-  function prepareSubmit() {
+  let submitting = false;
+
+  document.getElementById('predict-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    prepareSubmit();
+  });
+
+  function setSubmitting(on) {
+    submitting = on;
+    const btn = document.getElementById('predict-btn');
+    btn.disabled = on;
+    btn.textContent = on ? 'Preparing…' : 'Predict toxicity';
+  }
+
+  async function prepareSubmit() {
+    if (submitting) return false;
+
     const brandName = document.getElementById('brand_name').value.trim();
     if (!brandName) {
       alert('Please enter the brand name.');
       return false;
     }
 
-    const win = getKetcherWin();
-    if (!win || !win.ketcher) {
+    const k = getKetcher();
+    if (!k) {
       alert('Structure editor is still loading — please wait a moment and try again.');
       return false;
     }
 
-    win.ketcher.getSmiles().then(function (smiles) {
+    setSubmitting(true);
+    try {
+      const smiles = await k.getSmiles();
       if (!smiles) {
         alert('Please draw or load a structure before predicting.');
-        return;
+        setSubmitting(false);
+        return false;
       }
 
       const audit = analyzeChemistryFull(smiles);
       const multiDrugChecked = document.getElementById('multi-drug-mode') ? document.getElementById('multi-drug-mode').checked : true;
       const isMulti = audit.n_fragments > 1 && multiDrugChecked;
 
-      // Main SMILES - isomeric, preserves R/S, E/Z, isotopes, dot for multi-drug
+      if (isMulti) {
+        if (!confirm(`You drew ${audit.n_fragments} disconnected structures. They will be predicted as ${audit.n_fragments} separate drugs, each with its own report entry. Continue?`)) {
+          setSubmitting(false);
+          return false;
+        }
+      }
+
+      // Optional names: short last chance for the priority lookup only
+      if (audit.n_fragments === 1 && (needGen() || needChem())) {
+        await withTimeout(maybeAutofillNames(smiles, { skipFallback: true }), SUBMIT_WAIT_MS);
+        nameState.token++; // invalidate anything still in flight; we're leaving
+      }
+
       document.getElementById('smiles_final').value = smiles;
 
-      // Full audit - matches MODEL_STEREO_FEATURES + extra
-      const stereoAudit = {
-        n_stereocenters: audit.n_stereocenters,
-        n_assigned_stereocenters: audit.n_assigned_stereocenters,
-        n_unassigned_stereocenters: audit.n_unassigned_stereocenters,
-        n_ez_bonds: audit.n_ez_bonds,
-        n_assigned_ez: audit.n_assigned_ez,
-        n_unassigned_ez: audit.n_unassigned_ez,
-        has_chiral: audit.has_chiral,
-        has_ez: audit.has_ez,
-        has_stereo: audit.has_stereo,
-        has_unassigned_stereo: audit.has_unassigned_stereo,
-        has_unassigned_ez: audit.has_unassigned_ez,
-        is_stereoisomer_defined: audit.is_stereoisomer_defined,
-        has_isotope: audit.has_isotope,
-        n_isotope_atoms: audit.n_isotope_atoms,
-        has_tautomer: audit.has_tautomer,
-        isotope_labels: audit.isotope_labels,
-        atCount: audit.atCount,
-        ezMarkers: audit.ezMarkers,
-        n_fragments: audit.n_fragments,
-        fragments: audit.fragments
-      };
+      const stereoAudit = buildStereoAudit(audit);
       document.getElementById('stereo_audit_json').value = JSON.stringify(stereoAudit);
       document.getElementById('full_chemistry_json').value = JSON.stringify(audit);
       document.getElementById('model_features_json').value = JSON.stringify({
@@ -827,20 +1025,21 @@
       if (isMulti) {
         document.getElementById('smiles_list_json').value = JSON.stringify(audit.fragments);
         document.getElementById('is_multi_drug').value = '1';
-        if (!confirm(`You drew ${audit.n_fragments} disconnected structures. They will be predicted as ${audit.n_fragments} separate drugs, each with its own report entry. Continue?`)) {
-          return;
-        }
       } else {
         document.getElementById('smiles_list_json').value = JSON.stringify([smiles]);
         document.getElementById('is_multi_drug').value = '0';
       }
 
+      // form.submit() does not re-trigger the submit listener
       document.getElementById('predict-form').submit();
-    }).catch(function (err) {
+    } catch (err) {
       alert('Could not read the structure from the editor: ' + err);
-    });
-
+      setSubmitting(false);
+    }
     return false;
   }
+
+  // Back/forward cache: make sure the button isn't stuck in "Preparing…"
+  window.addEventListener('pageshow', function () { setSubmitting(false); });
 </script>
 {% endblock %}

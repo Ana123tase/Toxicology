@@ -3,6 +3,7 @@
 {% block title %}Prediction History{% endblock %}
 
 {% block extra_css %}
+<style>
   .ph-header{ margin-bottom: var(--gap); }
   .ph-header p.subtitle{ color:var(--muted); font-size:0.9rem; margin:0; }
 
@@ -41,8 +42,32 @@
   table.ph-table td, table.ph-table th{ white-space:nowrap; }
   table.ph-table td.smiles{ white-space:normal; }
 
-  .prob-plain{ color:var(--ink); font-variant-numeric:tabular-nums; }
-  .prob-high{ color:var(--ink); font-weight:700; font-variant-numeric:tabular-nums; }
+  /* Row separation */
+  table.ph-table{ border-collapse:collapse; }
+  table.ph-table th{
+    padding:10px 12px;
+    text-align:left;
+    border-bottom:2px solid #111;
+  }
+  table.ph-table td{
+    padding:14px 12px;
+    border-bottom:1px solid #d1d5db;
+    vertical-align:top;
+  }
+  table.ph-table tbody tr:nth-child(even) td{ background:#f9fafb; }
+  table.ph-table tbody tr:hover td{ background:#f3f4f6; }
+  table.ph-table tbody tr:last-child td{ border-bottom:2px solid #111; }
+
+  /* Probability text colors (text only, no highlighting) */
+  .prob-low{ color:var(--ink); font-variant-numeric:tabular-nums; }
+  .prob-moderate{ color:#8a6a1f; font-weight:700; font-variant-numeric:tabular-nums; }
+  .prob-high{ color:#c00000; font-weight:800; font-variant-numeric:tabular-nums; }
+  .prob-none{ color:var(--muted); }
+
+  .ph-legend{ font-size:0.82rem; color:var(--muted); margin:0 0 var(--gap) 0; }
+  .ph-legend .l-mod{ color:#8a6a1f; font-weight:700; }
+  .ph-legend .l-high{ color:#c00000; font-weight:800; }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -77,10 +102,17 @@
     </div>
 
     <ul class="messages">
-        <li class="warning">During your next experiments, remember to pay attention on an endpoint where your candidate drug has shown probability of toxicity above 20%.</li>
+        <li class="warning"><strong>Attention rule:</strong> any endpoint with a predicted probability of toxicity of 20% or more needs attention in your next experiments.</li>
     </ul>
 
     {% if page_obj %}
+    <p class="ph-legend">
+        Probability colors:
+        below 20% plain (low) ·
+        <span class="l-mod">20% to below 50% yellowish-brown (moderate)</span> ·
+        <span class="l-high">50% or more red (high / very high)</span>
+    </p>
+
     <div class="card table-scroll">
         <table class="ph-table">
             <thead>
@@ -105,11 +137,26 @@
                     <td>{{ report.generic_name|default:"—" }}</td>
                     <td>{{ report.chemical_name|default:"—" }}</td>
                     <td class="smiles">{{ report.smiles }}</td>
-                    <td class="{% if report.display_predictions.DILI >= 20 %}prob-high{% else %}prob-plain{% endif %}">{{ report.display_predictions.DILI }}%</td>
-                    <td class="{% if report.display_predictions.Ames >= 20 %}prob-high{% else %}prob-plain{% endif %}">{{ report.display_predictions.Ames }}%</td>
-                    <td class="{% if report.display_predictions.Teratogenicity >= 20 %}prob-high{% else %}prob-plain{% endif %}">{{ report.display_predictions.Teratogenicity }}%</td>
-                    <td class="{% if report.display_predictions.CYP3A4 >= 20 %}prob-high{% else %}prob-plain{% endif %}">{{ report.display_predictions.CYP3A4 }}%</td>
-                    <td class="{% if report.display_predictions.hERG >= 20 %}prob-high{% else %}prob-plain{% endif %}">{{ report.display_predictions.hERG }}%</td>
+
+                    {% with v=report.display_predictions.DILI %}
+                    <td class="{% if v is None or v == '' %}prob-none{% elif v >= 50 %}prob-high{% elif v >= 20 %}prob-moderate{% else %}prob-low{% endif %}">{% if v is None or v == '' %}—{% else %}{{ v|floatformat:1 }}%{% endif %}</td>
+                    {% endwith %}
+
+                    {% with v=report.display_predictions.Ames %}
+                    <td class="{% if v is None or v == '' %}prob-none{% elif v >= 50 %}prob-high{% elif v >= 20 %}prob-moderate{% else %}prob-low{% endif %}">{% if v is None or v == '' %}—{% else %}{{ v|floatformat:1 }}%{% endif %}</td>
+                    {% endwith %}
+
+                    {% with v=report.display_predictions.Teratogenicity %}
+                    <td class="{% if v is None or v == '' %}prob-none{% elif v >= 50 %}prob-high{% elif v >= 20 %}prob-moderate{% else %}prob-low{% endif %}">{% if v is None or v == '' %}—{% else %}{{ v|floatformat:1 }}%{% endif %}</td>
+                    {% endwith %}
+
+                    {% with v=report.display_predictions.CYP3A4 %}
+                    <td class="{% if v is None or v == '' %}prob-none{% elif v >= 50 %}prob-high{% elif v >= 20 %}prob-moderate{% else %}prob-low{% endif %}">{% if v is None or v == '' %}—{% else %}{{ v|floatformat:1 }}%{% endif %}</td>
+                    {% endwith %}
+
+                    {% with v=report.display_predictions.hERG %}
+                    <td class="{% if v is None or v == '' %}prob-none{% elif v >= 50 %}prob-high{% elif v >= 20 %}prob-moderate{% else %}prob-low{% endif %}">{% if v is None or v == '' %}—{% else %}{{ v|floatformat:1 }}%{% endif %}</td>
+                    {% endwith %}
                 </tr>
                 {% endfor %}
             </tbody>
@@ -118,11 +165,11 @@
 
     <div class="ph-actions" style="justify-content:center; margin-top:var(--gap); font-size:0.85rem;">
         {% if page_obj.has_previous %}
-            <a href="?page={{ page_obj.previous_page_number }}&date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}&q={{ query }}">← Previous</a>
+            <a href="?page={{ page_obj.previous_page_number }}&date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}&q={{ query|urlencode }}{% if show_all_dates %}&all_dates=1{% endif %}">← Previous</a>
         {% endif %}
         <span class="muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
         {% if page_obj.has_next %}
-            <a href="?page={{ page_obj.next_page_number }}&date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}&q={{ query }}">Next →</a>
+            <a href="?page={{ page_obj.next_page_number }}&date_from={{ date_from|date:'Y-m-d' }}&date_to={{ date_to|date:'Y-m-d' }}&q={{ query|urlencode }}{% if show_all_dates %}&all_dates=1{% endif %}">Next →</a>
         {% endif %}
     </div>
     {% else %}

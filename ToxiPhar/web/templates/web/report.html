@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load l10n %}
 
 {% block title %}ToxiPhar — Report{% endblock %}
 
@@ -6,17 +7,17 @@
 <style>
   .report-wrap{ color:#111; }
   .report-wrap .card{
-    background:#ffffff !important;
-    border:1px solid #e5e7eb !important;
-    border-radius:12px;
-    padding:18px 20px;
-    margin-bottom:16px;
+    background:#fff !important;
+    border:1px solid #d1d5db !important;
+    border-radius:6px;
+    padding:16px 18px;
+    margin-bottom:14px;
     color:#111 !important;
   }
   .report-wrap h1{ color:#111; margin:0 0 4px 0; }
-  .report-wrap h2{ color:#111; font-size:1.05rem; margin:0 0 10px 0; }
+  .report-wrap h2{ color:#111; font-size:1rem; margin:0 0 8px 0; }
   .report-wrap .muted{ color:#6b7280 !important; }
-  .drug-name{ font-size:1.35rem; font-weight:800; color:#111 !important; margin:0; }
+  .drug-name{ font-size:1.25rem; font-weight:700; color:#111 !important; margin:0; }
   .drug-sub{ color:#6b7280 !important; font-size:0.85rem; margin-top:4px; }
   .mono{
     font-family:ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -25,8 +26,8 @@
     background:#f3f4f6 !important;
     color:#111 !important;
     padding:8px 10px;
-    border-radius:6px;
-    border:1px solid #e5e7eb !important;
+    border-radius:4px;
+    border:1px solid #d1d5db !important;
   }
   .table-scroll{ overflow-x:auto; }
   .report-wrap table{ width:100%; border-collapse:collapse; }
@@ -35,52 +36,74 @@
     font-size:0.8rem;
     color:#6b7280 !important;
     font-weight:700;
-    padding:10px 12px;
+    padding:8px 10px;
     border-bottom:2px solid #111 !important;
     background:#fff !important;
   }
   .report-wrap td{
-    padding:11px 12px;
-    border-bottom:1px solid #f0f0f0 !important;
+    padding:9px 10px;
+    border-bottom:1px solid #e5e7eb !important;
     font-size:0.9rem;
     color:#111 !important;
     background:#fff !important;
   }
-  .badge{ display:inline-block; padding:3px 10px; border-radius:999px; font-size:0.72rem; font-weight:800; }
-  .badge-safe{ background:#dcfce7 !important; color:#166534 !important; border:1px solid #bbf7d0; }
-  .badge-low{ background:#dcfce7 !important; color:#166534 !important; }
-  .badge-moderate{ background:#fef9c3 !important; color:#854d0e !important; border:1px solid #fde68a; }
-  .badge-warn{ background:#fef9c3 !important; color:#854d0e !important; }
-  .badge-high{ background:#fee2e2 !important; color:#991b1b !important; border:1px solid #fecaca; }
-  .badge-danger{ background:#fee2e2 !important; color:#991b1b !important; }
-  .badge-very-low{ background:#dbeafe !important; color:#1e40af !important; }
-  .btn{ padding:8px 14px; border-radius:8px; border:1px solid #d1d5db; background:#fff; color:#111 !important; cursor:pointer; font-size:0.85rem; text-decoration:none; display:inline-block; }
-  .btn-primary{ background:#111 !important; color:#fff !important; border-color:#111 !important; }
+
+  /* Rows at 20% or above: bold endpoint name only (no bars, no fills) */
+  .report-wrap tr.row-attn td:first-child strong{ font-weight:800; }
+
+  /* Probability text colors (text only) */
+  .report-wrap td.prob{ font-weight:600; }
+  .report-wrap td.prob.p-moderate{ color:#8a6a1f !important; }
+  .report-wrap td.prob.p-high,
+  .report-wrap td.prob.p-very-high{ color:#c00000 !important; font-weight:800; }
+
+  /* Bands: plain colored text, no border, no background */
+  .band{
+    display:inline;
+    padding:0;
+    border:none;
+    background:none;
+    font-size:0.8rem;
+    letter-spacing:0.02em;
+    white-space:nowrap;
+    font-weight:600;
+    color:#6b7280;
+  }
+  .band-moderate{ color:#8a6a1f; font-weight:700; }
+  .band-high,
+  .band-very-high{ color:#c00000; font-weight:800; }
+
+  .legend-row{ margin-top:8px; font-size:0.85rem; }
+  .legend-row div{ margin-bottom:6px; }
+
+  .btn{ padding:8px 14px; border-radius:4px; border:1px solid #111; background:#fff; color:#111 !important; cursor:pointer; font-size:0.85rem; text-decoration:none; display:inline-block; }
+  .btn-primary{ background:#111 !important; color:#fff !important; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="report-wrap">
 
-<div style="margin-bottom:18px;">
+<div style="margin-bottom:16px;">
   <h1>Toxicity screening report</h1>
   <p class="muted" style="margin:4px 0 0 0; font-size:0.85rem;">Computational predictions for prioritization — not a substitute for experimental validation.</p>
 </div>
 
-<div class="card" style="background:#f9fafb !important;">
-  <p style="font-size:0.85rem; color:#111 !important; margin:0;">
-    * During your next experiments, remember to pay attention on an endpoint where your candidate drug has shown probability of toxicity above 20%.
+<div class="card">
+  <p style="font-size:0.88rem; margin:0;">
+    <strong>Attention rule:</strong> any endpoint with a predicted probability of toxicity of
+    <strong>20% or more</strong> needs attention in your next experiments.
   </p>
 </div>
 
 {% if error %}
-  <div class="card" style="border-color:#fecaca !important; background:#fff1f2 !important;">
-    <p style="color:#991b1b !important; margin:0; font-size:0.9rem;">{{ error }}</p>
+  <div class="card">
+    <p style="margin:0; font-size:0.9rem;"><strong>Error:</strong> {{ error }}</p>
   </div>
 {% endif %}
 
 {% if not result and not results %}
-  <div class="card"><p style="margin:0; color:#111 !important;">No prediction found. Go to <a href="{% url 'web:predict' %}" style="color:#111; text-decoration:underline;">predict page</a>.</p></div>
+  <div class="card"><p style="margin:0;">No prediction found. Go to <a href="{% url 'web:predict' %}" style="color:#111; text-decoration:underline;">predict page</a>.</p></div>
 {% endif %}
 
 {% if results %}
@@ -104,16 +127,21 @@
       </div>
 
       <div style="margin-top:16px;">
-        <h2>Predicted endpoints</h2>
+        <h2>Predicted endpoints <span class="muted" style="font-weight:400; font-size:0.8rem;">(highest first)</span></h2>
         <div class="table-scroll">
           <table>
             <thead><tr><th>Endpoint</th><th>Probability</th><th>Risk band</th></tr></thead>
             <tbody>
-              {% for ep in item.endpoints %}
-                <tr>
-                  <td><strong style="color:#111;">{{ ep.name }}</strong></td>
-                  <td style="color:#111; font-weight:600;">{{ ep.probability_percent|floatformat:1 }}%</td>
-                  <td><span class="badge badge-{{ ep.risk_level }}">{{ ep.risk_level|upper }}</span></td>
+              {% for ep in item.endpoints|dictsortreversed:"probability_percent" %}
+                <tr class="{% if ep.probability_percent >= 20 %}row-attn{% else %}row-low{% endif %}">
+                  <td><strong>{{ ep.name }}</strong></td>
+                  <td class="prob {% if ep.probability_percent >= 75 %}p-very-high{% elif ep.probability_percent >= 50 %}p-high{% elif ep.probability_percent >= 20 %}p-moderate{% endif %}">{{ ep.probability_percent|floatformat:1 }}%</td>
+                  <td>
+                    {% if ep.probability_percent >= 75 %}<span class="band band-very-high">VERY HIGH</span>
+                    {% elif ep.probability_percent >= 50 %}<span class="band band-high">HIGH</span>
+                    {% elif ep.probability_percent >= 20 %}<span class="band band-moderate">MODERATE</span>
+                    {% else %}<span class="band">LOW</span>{% endif %}
+                  </td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -126,12 +154,12 @@
 {% elif result %}
   <div class="card">
     <p class="drug-name">
-      {% if brand_name %}{{ brand_name }}
-      {% else %}Predicted compound{% endif %}
+      {% if brand_name %}{{ brand_name }}{% else %}Predicted compound{% endif %}
     </p>
     {% if generic_name or chemical_name %}
       <p class="drug-sub">
-        {% if generic_name %}Generic: <strong style="color:#111;">{{ generic_name }}</strong> · {% endif %}
+        {% if generic_name %}Generic: <strong style="color:#111;">{{ generic_name }}</strong>{% endif %}
+        {% if generic_name and chemical_name %} · {% endif %}
         {% if chemical_name %}Chemical: <strong style="color:#111;">{{ chemical_name }}</strong>{% endif %}
       </p>
     {% endif %}
@@ -142,16 +170,21 @@
     </div>
 
     <div style="margin-top:16px;">
-      <h2>Predicted endpoints</h2>
+      <h2>Predicted endpoints <span class="muted" style="font-weight:400; font-size:0.8rem;">(highest first)</span></h2>
       <div class="table-scroll">
         <table>
           <thead><tr><th>Endpoint</th><th>Probability</th><th>Risk band</th></tr></thead>
           <tbody>
-            {% for ep in endpoints %}
-              <tr>
-                <td><strong style="color:#111;">{{ ep.name }}</strong></td>
-                <td style="color:#111; font-weight:600;">{{ ep.probability_percent|floatformat:1 }}%</td>
-                <td><span class="badge badge-{{ ep.risk_level }}">{{ ep.risk_level|upper }}</span></td>
+            {% for ep in endpoints|dictsortreversed:"probability_percent" %}
+              <tr class="{% if ep.probability_percent >= 20 %}row-attn{% else %}row-low{% endif %}">
+                <td><strong>{{ ep.name }}</strong></td>
+                <td class="prob {% if ep.probability_percent >= 75 %}p-very-high{% elif ep.probability_percent >= 50 %}p-high{% elif ep.probability_percent >= 20 %}p-moderate{% endif %}">{{ ep.probability_percent|floatformat:1 }}%</td>
+                <td>
+                  {% if ep.probability_percent >= 75 %}<span class="band band-very-high">VERY HIGH</span>
+                  {% elif ep.probability_percent >= 50 %}<span class="band band-high">HIGH</span>
+                  {% elif ep.probability_percent >= 20 %}<span class="band band-moderate">MODERATE</span>
+                  {% else %}<span class="band">LOW</span>{% endif %}
+                </td>
               </tr>
             {% endfor %}
           </tbody>
@@ -162,17 +195,21 @@
 {% endif %}
 
 {% if results or result %}
-  <div class="card" style="background:#f9fafb !important;">
+  <div class="card">
     <h2>Interpretation</h2>
-    <p style="font-size:0.85rem; color:#111 !important; margin:0;">
-      <span class="badge badge-danger">DANGER</span> ≥75% → early assay.
-      <span class="badge badge-safe">SAFE</span> <30% → lower priority. Percentages = model confidence.
+    <p style="font-size:0.85rem; margin:0;">
+      The percentage is the model's predicted probability of toxicity for that endpoint.
     </p>
+    <div class="legend-row">
+      <div><span class="band">LOW</span> below 20% — lower priority</div>
+      <div><span class="band band-moderate">MODERATE</span> 20% to below 50% — needs attention, monitor</div>
+      <div><span class="band band-high">HIGH</span> 50% to below 75% — test early</div>
+      <div><span class="band band-very-high">VERY HIGH</span> 75% or more — highest priority, early assay</div>
+    </div>
   </div>
 {% endif %}
 
-{# ONLY BUTTON, NO FORM BOX #}
-<div style="margin-top:24px; text-align:left;">
+<div style="margin-top:20px; text-align:left;">
   <a href="{% url 'web:predict' %}" class="btn btn-primary" style="padding:10px 18px; font-size:0.9rem; font-weight:700;">
     Generate new predictions
   </a>
